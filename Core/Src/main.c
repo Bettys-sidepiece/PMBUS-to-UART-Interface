@@ -18,7 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "CMSIS_RTOS_V2/cmsis_os.h"
+#include "CMSIS_RTOS_V2/cmsis_os2.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -56,11 +56,38 @@ static void MX_GPIO_Init(void);
 static void MX_LPUART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void init_TIM6(void);
-void IncTick(void);
+
+// Task function prototypes
+void UartTask(void *argument);
+void PmbusTask(void *argument);
+void CommandProcessingTask(void *argument);
+void LogTask(void *argument);
+void SupervisorTask(void *argument);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/* Definitions for UartTask */
+osMessageQueueId_t logQueue;
+osMessageQueueId_t cmdQueue;
+
+osMutexId_t pmbusMutex;
+const osMutexAttr_t pMutex_attr ={
+		.name = "PMBUSMutex"
+};
+
+typedef struct {
+    uint8_t commandType;
+    uint8_t data[254];
+    uint8_t dataLength;
+} CommandMessage;
+
+typedef struct {
+    uint8_t message;
+    uint8_t data[254];
+    uint8_t dataLength;
+} LogMessage;
+
 /* USER CODE END 0 */
 
 /**
@@ -71,6 +98,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  // Initialize CMSIS-RTOS
 
   /* USER CODE END 1 */
 
@@ -93,10 +121,47 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_LPUART1_UART_Init();
-  //MX_I2C1_Init();
+
   /* USER CODE BEGIN 2 */
+  osKernelInitialize();
+
+  // Create tasks
+  osThreadAttr_t task_attributes = {
+	    .priority = osPriorityNormal,
+          .stack_size = 2048
+      };
+  task_attributes.name = "UART";
+
+  osThreadNew(UartTask, NULL, &task_attributes);
+
+  task_attributes.name = "PMBUS";
+  task_attributes.priority = osPriorityHigh,
+  osThreadNew(PmbusTask, NULL, &task_attributes);
+
+  task_attributes.name = "CMD";
+  task_attributes.priority = osPriorityAboveNormal;
+  osThreadNew(CommandProcessingTask, NULL, &task_attributes);
+
+  task_attributes.name = "LOG";
+  task_attributes.priority = osPriorityLow;
+  osThreadNew(LogTask, NULL, &task_attributes);
+
+  task_attributes.name = "SUP";
+  task_attributes.priority = osPriorityHigh1;
+  task_attributes.stack_size = 1024;
+  osThreadNew(SupervisorTask, NULL, &task_attributes);
+
+  // Create message queues
+  logQueue = osMessageQueueNew(20, sizeof(LogMessage), NULL);
+  cmdQueue = osMessageQueueNew(10, sizeof(CommandMessage), NULL);
+
+  // Create mutex
+  pmbusMutex = osMutexNew(&pMutex_attr);
+
   I2C_Init();
   EnableI2C();
+
+  osKernelStart();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -270,6 +335,58 @@ void init_TIM6(void)
     TIM6->CR1 |= TIM_CR1_CEN;
 }
 
+
+void UartTask(void *argument)
+{
+    for (;;) {
+        // Handle UART communication
+        // Parse incoming commands and send to cmdQueue
+        // Send responses back to PC
+        osDelay(1);  // Small delay to prevent tight loop
+    }
+}
+
+void PmbusTask(void *argument)
+{
+    for (;;) {
+        // Take I2C mutex
+        if (osMutexAcquire(pmbusMutex, osWaitForever) == osOK) {
+            // Perform PMBUS operations
+            // Release I2C mutex
+            osMutexRelease(pmbusMutex);
+        }
+        osDelay(1);  // Small delay to prevent tight loop
+    }
+}
+
+void CommandProcessingTask(void *argument)
+{
+    for (;;) {
+        // Wait for commands from cmdQueue
+        // Process commands
+        // Send results to appropriate task
+        osDelay(1);  // Small delay to prevent tight loop
+    }
+}
+
+void LogTask(void *argument)
+{
+    for (;;) {
+        // Wait for log messages from logQueue
+        // Write log messages to storage or output
+        osDelay(1);  // Small delay to prevent tight loop
+    }
+}
+
+void SupervisorTask(void *argument)
+{
+    for (;;) {
+        // Monitor task execution times
+        // Check system health
+        // Handle any system-wide issues
+        osDelay(1000);  // Check every second
+    }
+}
 /* USER CODE END 4 */
 
 /**
