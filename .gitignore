@@ -1,3 +1,34 @@
 /Debug/
 /Binaries/
-*.ioc
+.ioc
+.cproject
+.mxproject
+.project
+.launch
+.ld
+
+# Additional patterns
+/build/
+/dist/
+
+# IDE-specific files and directories
+.idea/
+*.iml
+
+# OS-specific files
+Thumbs.db
+.DS_Store
+
+# Log files
+*.log
+
+# Compiled object files
+*.o
+*.obj
+
+# Temporary files
+*.tmp
+*.temp
+
+# Backup files
+*~

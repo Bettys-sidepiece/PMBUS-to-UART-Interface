@@ -18,163 +18,38 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "CMSIS_RTOS_V2/cmsis_os2.h"
+#include "sysutil.h"
+
 
 /* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-#define sysclk 170000000U//Hz
-#define RTOS_PER 1 //ms
-/* USER CODE END Includes */
-
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-
-/* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
-
-/* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
-
 UART_HandleTypeDef hlpuart1;
-
-/* USER CODE BEGIN PV */
+IWDG_HandleTypeDef hiwdg;
 pmbus_device_t pdevice;
-/* USER CODE END PV */
 
-/* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_LPUART1_UART_Init(void);
-/* USER CODE BEGIN PFP */
 void init_TIM6(void);
 
-// Task function prototypes
-void UartTask(void *argument);
-void PmbusTask(void *argument);
-void CommandProcessingTask(void *argument);
-void LogTask(void *argument);
-void SupervisorTask(void *argument);
-/* USER CODE END PFP */
 
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-/* Definitions for UartTask */
-osMessageQueueId_t logQueue;
-osMessageQueueId_t cmdQueue;
-
-osMutexId_t pmbusMutex;
-const osMutexAttr_t pMutex_attr ={
-		.name = "PMBUSMutex"
-};
-
-typedef struct {
-    uint8_t commandType;
-    uint8_t data[254];
-    uint8_t dataLength;
-} CommandMessage;
-
-typedef struct {
-    uint8_t message;
-    uint8_t data[254];
-    uint8_t dataLength;
-} LogMessage;
-
-/* USER CODE END 0 */
-
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
 int main(void)
 {
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_LPUART1_UART_Init();
+    init_TIM6();
+    initWatchdog();
 
-  /* USER CODE BEGIN 1 */
-  // Initialize CMSIS-RTOS
+    /* Initialize CMSIS-RTOS2 */
+    osKernelInitialize();
+    /* Start the scheduler */
+    initRTOS();
+    osKernelStart();
 
-  /* USER CODE END 1 */
-
-  /* MCU Configuration--------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* Configure the system clock */
-  SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_LPUART1_UART_Init();
-
-  /* USER CODE BEGIN 2 */
-  osKernelInitialize();
-
-  // Create tasks
-  osThreadAttr_t task_attributes = {
-	    .priority = osPriorityNormal,
-          .stack_size = 2048
-      };
-  task_attributes.name = "UART";
-
-  osThreadNew(UartTask, NULL, &task_attributes);
-
-  task_attributes.name = "PMBUS";
-  task_attributes.priority = osPriorityHigh,
-  osThreadNew(PmbusTask, NULL, &task_attributes);
-
-  task_attributes.name = "CMD";
-  task_attributes.priority = osPriorityAboveNormal;
-  osThreadNew(CommandProcessingTask, NULL, &task_attributes);
-
-  task_attributes.name = "LOG";
-  task_attributes.priority = osPriorityLow;
-  osThreadNew(LogTask, NULL, &task_attributes);
-
-  task_attributes.name = "SUP";
-  task_attributes.priority = osPriorityHigh1;
-  task_attributes.stack_size = 1024;
-  osThreadNew(SupervisorTask, NULL, &task_attributes);
-
-  // Create message queues
-  logQueue = osMessageQueueNew(20, sizeof(LogMessage), NULL);
-  cmdQueue = osMessageQueueNew(10, sizeof(CommandMessage), NULL);
-
-  // Create mutex
-  pmbusMutex = osMutexNew(&pMutex_attr);
-
-  I2C_Init();
-  EnableI2C();
-
-  osKernelStart();
-  /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-    /* USER CODE END WHILE */
-	  while(!pdevice.address){
-		  if(scanPMBUSwire(&pdevice));
-	  }
-    /* USER CODE BEGIN 3 */
-  }
-  /* USER CODE END 3 */
+    /* We should never get here as control is now taken by the scheduler */
+    for(;;);
 }
 
 /**
@@ -338,54 +213,194 @@ void init_TIM6(void)
 
 void UartTask(void *argument)
 {
-    for (;;) {
-        // Handle UART communication
-        // Parse incoming commands and send to cmdQueue
-        // Send responses back to PC
-        osDelay(1);  // Small delay to prevent tight loop
-    }
+	uint8_t rxbuffer[UART_BUFFER_SIZE];
+	uint16_t rx_index = 0;
+
+	for (;;) {
+		if(HAL_UART_Receive(&hlpuart1, &rxbuffer[rx_index], 1, 100) == HAL_OK)
+		{
+		if(rxbuffer[rx_index] == '\n' || rxbuffer[rx_index] == '\r')
+		{
+		    /* Complete command received */
+		    Command_t cmd;
+		    cmd.type = 0; // Assume type 0 for this example
+		    memcpy(cmd.data, rxbuffer, rx_index);
+		    cmd.length = rx_index;
+
+		    /* Send command to processing task */
+		    osMessageQueuePut(cmdQueue, &cmd, 0, 0);
+
+		    /* Signal command processing task */
+		    osEventFlagsSet(cmdEventFlags, 0x01);
+
+		    /* Reset buffer */
+		    rx_index = 0;
+		}
+		else
+		{
+		    rx_index++;
+		    if(rx_index >= UART_BUFFER_SIZE)
+		    {
+			    /* Buffer overflow, reset */
+			    logMessage(LOG_WARNING, "UART buffer overflow, resetting buffer");
+			    rx_index = 0;
+		    }
+		}
+	  }
+
+	  osThreadYield(); // Allow other tasks to run
+	}
 }
 
 void PmbusTask(void *argument)
 {
     for (;;) {
-        // Take I2C mutex
-        if (osMutexAcquire(pmbusMutex, osWaitForever) == osOK) {
-            // Perform PMBUS operations
-            // Release I2C mutex
-            osMutexRelease(pmbusMutex);
+	  /* Acquire PMBUS mutex with timeout */
+	  if(osMutexAcquire(pmbusMutex, 1000) == osOK)
+	  {
+		/* Perform PMBUS operation */
+
+		/* Release mutex */
+		osMutexRelease(pmbusMutex);
+	  }
+	  else
+	  {
+		/* Mutex acquisition failed, log error */
+		LogMessage_t log = {.level = 1, .message = "Error: PMBUS mutex timeout"};
+		osMessageQueuePut(logQueue, &log, 0, 0);
+	  }
+
+	  osThreadYield(); // Allow other tasks to run
         }
-        osDelay(1);  // Small delay to prevent tight loop
-    }
 }
 
 void CommandProcessingTask(void *argument)
 {
+    Command_t cmd;
     for (;;) {
-        // Wait for commands from cmdQueue
-        // Process commands
-        // Send results to appropriate task
-        osDelay(1);  // Small delay to prevent tight loop
+        // Wait for command flag with a timeout
+        osStatus_t status = osEventFlagsWait(cmdEventFlags, 0x01, osFlagsWaitAny, 5000);  // 5 second timeout
+
+        if (status == osErrorTimeout) {
+            logMessage(LOG_WARNING, "Command processing task timeout");
+            continue;
+        }
+
+        // Retrieve command from queue
+        if (osMessageQueueGet(cmdQueue, &cmd, NULL, 0) == osOK) {
+            // Process command
+            switch(cmd.type) {
+                case PMBUS_CMD:
+                    // PMBUS command
+                    if (osMutexAcquire(pmbusMutex, 1000) == osOK) {
+                        ProcessPmbusCommand(&cmd);
+                        osMutexRelease(pmbusMutex);
+                    } else {
+                        logMessage(LOG_ERROR, "Failed to acquire PMBUS mutex");
+                    }
+                    break;
+                case SYSTEM_CMD:
+                    // System control command
+                    ProcessSystemCommand(&cmd);
+                    break;
+                case CONFIG_CMD:
+                    // Configuration command
+                    ProcessConfigCommand(&cmd);
+                    break;
+                default:
+                    logMessage(LOG_WARNING, "Unknown command type received");
+                    break;
+            }
+        } else {
+            logMessage(LOG_ERROR, "Failed to retrieve command from queue");
+        }
+
+        // Kick the watchdog
+        kickWatchdog();
     }
 }
 
 void LogTask(void *argument)
 {
-    for (;;) {
-        // Wait for log messages from logQueue
-        // Write log messages to storage or output
-        osDelay(1);  // Small delay to prevent tight loop
+    LogEntry log;
+    static char buffer[MAX_LOG_MESSAGE + 50];  // Extra space for timestamp and level
+    for(;;) {
+        if (osMessageQueueGet(logQueue, &log, NULL, osWaitForever) == osOK) {
+            // Format log message
+            int len = snprintf(buffer, sizeof(buffer), "[%lu] %s: %s\r\n",
+                               log.timestamp,
+                               log.level == LOG_INFO ? "INFO" :
+                               log.level == LOG_WARNING ? "WARNING" :
+                               log.level == LOG_ERROR ? "ERROR" : "CRITICAL",
+                               log.message);
+
+            // Transmit log message via UART with timeout
+            if (HAL_UART_Transmit(&hlpuart1, (uint8_t*)buffer, len, 1000) != HAL_OK) {
+                // UART transmission failed
+            }
+        }
+
+        // Kick the watchdog
+        kickWatchdog();
     }
 }
 
 void SupervisorTask(void *argument)
 {
+    uint32_t last_runtime = osKernelGetTickCount();
     for (;;) {
         // Monitor task execution times
         // Check system health
         // Handle any system-wide issues
-        osDelay(1000);  // Check every second
+
+        kickWatchdog();
+        checkTaskHealth();
+
+        /* Check if other tasks are running */
+        if (osThreadGetState(taskHandles[0]) == osThreadBlocked &&  // UART Task
+            osThreadGetState(taskHandles[2]) == osThreadBlocked &&  // Command Processing Task
+            osThreadGetState(taskHandles[1]) == osThreadBlocked)    // PMBUS Task
+        {
+            /* All main tasks are blocked, this might indicate a problem */
+            logMessage(LOG_CRITICAL, "Critical: All main tasks blocked");
+
+            /* Here you might want to implement a recovery mechanism */
+            startIncrementalRecovery();
+        }
+
+        /* Check for system overrun */
+        uint32_t current_time = osKernelGetTickCount();
+        if (current_time - last_runtime > 1100) // allowing 10% margin
+        {
+            logMessage(LOG_WARNING, "Warning: System overrun detected");
+        }
+
+        last_runtime = current_time;
+
+        if (currentRecoveryStage != RECOVERY_STAGE_COMPLETE) {
+            incrementalRecoveryStep();
+        }
+
+        osDelay(1000); // Check every second
     }
+}
+
+void initWatchdog(void)
+{
+    hiwdg.Instance = IWDG;
+    hiwdg.Init.Prescaler = IWDG_PRESCALER_256;
+    hiwdg.Init.Window = IWDG_WINDOW_DISABLE;
+    hiwdg.Init.Reload = 4095;  // ~26 seconds at 32 kHz LSI
+
+    if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
+    {
+        Error_Handler();
+    }
+}
+
+void kickWatchdog(void)
+{
+    HAL_IWDG_Refresh(&hiwdg);
 }
 /* USER CODE END 4 */
 

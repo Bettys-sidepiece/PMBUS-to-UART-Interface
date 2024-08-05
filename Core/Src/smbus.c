@@ -1013,12 +1013,12 @@ uint8_t setOpstatus(uint8_t devAddress, uint8_t data)
 **/
 uint8_t getOnOffConfig(uint8_t devAddress, uint8_t* buffer)
 {
-	if(!PMBUS_ReadByte(devAddress, 0x01, buffer)) return 0;
+	if(!PMBUS_ReadByte(devAddress, 0x02, buffer)) return 0;
 	return 1;
 }
 
 uint8_t setOnOffConfig(uint8_t devAddress, uint8_t data)
 {
-	if(!PMBUS_WriteByte(devAddress, 0x01, data)) return 0;
+	if(!PMBUS_WriteByte(devAddress, 0x02, data)) return 0;
 	return 1;
 }
