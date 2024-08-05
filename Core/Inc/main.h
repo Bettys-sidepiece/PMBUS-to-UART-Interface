@@ -27,12 +27,9 @@ extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+
 #include "stm32g4xx_hal.h"
-#include "smbus.h"
-#include "pmbus_device.h"
+
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */

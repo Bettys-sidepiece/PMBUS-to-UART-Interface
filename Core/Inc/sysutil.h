@@ -8,10 +8,13 @@
 #ifndef INC_SYSUTIL_H_
 #define INC_SYSUTIL_H_
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include "stm32g4xx_hal.h"
 #include "CMSIS_RTOS_V2/cmsis_os2.h"
+#include "smbus.h"
+#include "pmbus_device.h"
 
 #define sysclk 170000000U//Hz
 #define RTOS_PER 1 //ms

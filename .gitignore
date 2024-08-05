@@ -5,7 +5,6 @@
 .mxproject
 .project
 .launch
-.ld
 
 # Additional patterns
 /build/
