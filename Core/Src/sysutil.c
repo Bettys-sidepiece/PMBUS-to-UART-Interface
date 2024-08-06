@@ -25,6 +25,11 @@ osTimerId_t recoveryTimer;
 uint8_t rxbuffer[UART_BUFFER_SIZE];
 uint16_t rx_index = 0;
 
+char syscheck[MAX_LOG_MESSAGE];
+char response[256];
+
+uint8_t log_verbosity = NORMAL;
+
 static const CommandHandler commandHandlers[] = {
     [PAGE] = HandlePage,
     [OPERATION] = HandleOperation,
@@ -151,14 +156,29 @@ void initPeripherals(){
 
 }
 
-void logMessage(LogLevel level, const char* message) {
-    LogEntry entry;
-    entry.level = level;
-    strncpy(entry.message, message, MAX_LOG_MESSAGE - 1);
-    entry.message[MAX_LOG_MESSAGE - 1] = '\0';
-    entry.timestamp = osKernelGetTickCount();
+void setLogVerbosity(log_verbosity_t verbose){
+	log_verbosity = verbose;
+	const char* str = (verbose == MUTE) ? "LOW":(verbose == NORMAL) ? "MEDIUM" : "HIGH";
+	snprintf(syscheck, sizeof(syscheck), "Log verbosity set to %s", str);
+	logMessage(LOG_INFO, syscheck);
+}
 
-    osMessageQueuePut(logQueue, &entry, 0, 0);
+void logMessage(LogLevel level, const char* message) {
+	// MUTE: only LOG_CRITICAL and LOG_ERROR
+    // NORMAL: LOG_CRITICAL, LOG_ERROR, and LOG_WARNING
+    // LOUD: all levels (LOG_CRITICAL, LOG_ERROR, LOG_WARNING, and LOG_INFO)
+    if ((log_verbosity == MUTE && level >= LOG_ERROR) ||
+	  (log_verbosity == NORMAL && level >= LOG_WARNING) ||
+	  (log_verbosity == LOUD)) {
+
+	    LogEntry entry;
+	    entry.level = level;
+	    strncpy(entry.message, message, MAX_LOG_MESSAGE - 1);
+	    entry.message[MAX_LOG_MESSAGE - 1] = '\0';
+	    entry.timestamp = getUpTime();
+
+	    osMessageQueuePut(logQueue, &entry, 0, 0);
+    }
 }
 
 
@@ -196,26 +216,33 @@ void checkTaskHealth(void) {
         if (osThreadGetState(taskHandles[i]) == osThreadBlocked) {
             if (taskHealthStatus[i] == TASK_HEALTHY) {
                 taskHealthStatus[i] = TASK_SUSPECTED;
+
             } else if (taskHealthStatus[i] == TASK_SUSPECTED) {
                 taskHealthStatus[i] = TASK_FAULTY;
                 isolateTask(i);
             }
         } else {
             taskHealthStatus[i] = TASK_HEALTHY;
+
+            snprintf(syscheck,MAX_LOG_MESSAGE,"%s task is healthy", osThreadGetName(taskHandles[i]));
+            logMessage(LOG_INFO,syscheck);
+
         }
     }
 }
 
 void isolateTask(int taskIndex) {
     osThreadSuspend(taskHandles[taskIndex]);
-    logMessage(LOG_WARNING, "Task suspended due to suspected fault");
+    snprintf(syscheck, MAX_LOG_MESSAGE,"%s task suspended due to suspected fault",osThreadGetName(taskHandles[taskIndex]));
+    logMessage(LOG_WARNING, syscheck);
 
     // Attempt to restart the task
     osThreadTerminate(taskHandles[taskIndex]);
     taskHandles[taskIndex] = osThreadNew(taskFunctions[taskIndex], NULL, &taskAttributes[taskIndex]);
 
     if (taskHandles[taskIndex] == NULL) {
-        logMessage(LOG_ERROR, "Failed to restart faulty task");
+	snprintf(syscheck, MAX_LOG_MESSAGE,"Failed to restart faulty %s",osThreadGetName(taskHandles[taskIndex]));
+	logMessage(LOG_ERROR, syscheck);
     }
 }
 
@@ -284,7 +311,7 @@ void initRTOS(){
 	    taskHandles[i] = osThreadNew(*taskFunctions[i], NULL, &taskAttributes[i]);
 	    if(taskHandles[i] == NULL){
 		    char bufx[MAX_LOG_MESSAGE];
-		    char* name = taskAttributes->name;
+		    const char* name = taskAttributes->name;
 		    snprintf(bufx, MAX_LOG_MESSAGE,"Error: Failed to create %s task", name);
 		    logMessage(LOG_ERROR,bufx);
 	    }
@@ -296,7 +323,7 @@ void initRTOS(){
 
 // Command Processiing functions
 void ProcessPmbusCommand(Command_t *cmd) {
-    p_cmd_t command = (p_cmd_t)cmd->data[1];
+    p_cmd_t command = (p_cmd_t)cmd;
 
     char buff[64];
     if (command < sizeof(commandHandlers) / sizeof(commandHandlers[0]) && commandHandlers[command]) {
@@ -308,7 +335,7 @@ void ProcessPmbusCommand(Command_t *cmd) {
 }
 
 void ProcessSystemCommand(Command_t *cmd) {
-    SystemCmd sysCmd = (SystemCmd)cmd->type;
+    SystemCmd sysCmd = (SystemCmd)cmd->cmd;
 
     switch(sysCmd) {
         case SYS_GET_OS_VERSION:
@@ -319,20 +346,12 @@ void ProcessSystemCommand(Command_t *cmd) {
             InitiateFirmwareUpdate();
             break;
 
-        case SYS_STATUS:
-            SendSystemStatus();
-            break;
-
         case SYS_RESET:
             PerformSystemReset();
             break;
 
         case SYS_GET_UPTIME:
             SendSystemUptime();
-            break;
-
-        case SYS_RUN_DIAGNOSTICS:
-            RunSystemDiagnostics();
             break;
 
         case SYS_GET_MEMORY_STATS:
@@ -358,7 +377,6 @@ void SendResponse(const char* response) {
 }
 
 void SendOSVersion(void) {
-	char response[MAX_LOG_MESSAGE];
 	snprintf(response, sizeof(response), "OS Version: %s\r\n", OS_VERSION);
 	SendResponse(response);
 }
@@ -367,25 +385,53 @@ void InitiateFirmwareUpdate(void){
 
 }
 
-void SendSystemStatus(void){
-
-}
-
 void PerformSystemReset(void){
-	logMessage(LOG_INFO,"Performing system reset...\r\n");
+	logMessage(LOG_WARNING,"Performing system reset...");
+	logMessage(LOG_WARNING,"System will reset in 3 seconds.\n");
+	HAL_Delay(3000);  // Wait for 3 seconds
 	HAL_NVIC_SystemReset();
 }
 
-void SendSystemUptime(void){
+Uptime_t getUpTime(void) {
+    uint32_t total_seconds = osKernelGetTickCount() / configTICK_RATE_HZ;
 
+    Uptime_t uptime;
+    uptime.days = total_seconds / (24 * 3600);
+    uptime.hours = (total_seconds % (24 * 3600)) / 3600;
+    uptime.minutes = (total_seconds % 3600) / 60;
+    uptime.seconds = total_seconds % 60;
+
+    return uptime;
 }
 
-void RunSystemDiagnostics(void){
+void SendSystemUptime(void) {
+    Uptime_t uptime = getUpTime();
 
+    char uptimeStr[64];
+    int written = snprintf(uptimeStr, sizeof(uptimeStr),
+                           "System Uptime: %lu d:%lu h:%lu m:%lu s\r\n",
+                           uptime.days, uptime.hours, uptime.minutes, uptime.seconds);
+
+    if (written >= 0 && written < sizeof(uptimeStr)) {
+        SendResponse(uptimeStr);
+    } else {
+        logMessage(LOG_ERROR,"Unable to format system uptime.");
+    }
 }
 
 void SendMemoryStatistics(void){
+	uint32_t total = configTOTAL_HEAP_SIZE;
+	uint32_t used = total - xPortGetFreeHeapSize();
+	uint32_t free = xPortGetFreeHeapSize();
 
+	snprintf(response, sizeof(response),
+		 "Memory Statistics:\r\n"
+		 "Total: %lu bytes\r\n"
+		 "Used: %lu bytes\r\n"
+		 "Free: %lu bytes\r\n",
+		 total, used, free);
+
+	SendResponse(response);
 }
 
 void SendCPUUsage(void){
@@ -393,7 +439,18 @@ void SendCPUUsage(void){
 }
 
 void SendHardwareInfo(void){
-
+	snprintf(response, sizeof(response),
+	    "Hardware Information:\r\n"
+	    "MCU: STM32G474xx\r\n"
+	    "Clock Speed: %lu MHz\r\n"
+	    "Flash Size: %u KB\r\n"
+	    "RAM Size: %u KB\r\n"
+	    "Unique Device ID: %08lX%08lX%08lX\r\n",
+	    HAL_RCC_GetSysClockFreq() / 1000000,
+	    *(__IO uint16_t*)(0x1FFF75E0), // Flash size register
+	    *(__IO uint16_t*)(0x1FFF75E2), // RAM size register
+	    HAL_GetUIDw0(), HAL_GetUIDw1(), HAL_GetUIDw2());
+	SendResponse(response);
 }
 
 void ProcessConfigCommand(Command_t *cmd) {

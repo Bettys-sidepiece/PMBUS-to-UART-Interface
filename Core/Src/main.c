@@ -31,7 +31,6 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_LPUART1_UART_Init(void);
 void init_TIM6(void);
-static void MX_DMA_Init(void);
 void HardFault_Handler_C(uint32_t *hardfault_args);
 
 
@@ -42,7 +41,6 @@ int main(void)
     MX_GPIO_Init();
     MX_LPUART1_UART_Init();
     init_TIM6();
-    //MX_DMA_Init();
     initWatchdog();
     initPeripherals();
 
@@ -103,19 +101,6 @@ void SystemClock_Config(void)
   }
 }
 
-
-static void MX_DMA_Init(void)
-{
-  /* DMA controller clock enable */
-  __HAL_RCC_DMAMUX1_CLK_ENABLE();
-  __HAL_RCC_DMA1_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
-  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
-}
 /**
   * @brief LPUART1 Initialization Function
   * @param None
@@ -230,41 +215,83 @@ void init_TIM6(void)
 
 void UartTask(void *argument)
 {
-	for (;;) {
-		if(HAL_UART_Receive(&hlpuart1, &rxbuffer[rx_index], 1, 100) == HAL_OK)
-		{
-		if(rxbuffer[rx_index] == '\n')
-		{
-		    /* Complete command received */
-		    Command_t cmd;
-		    cmd.type = 0; // Assume type 0 for this example
-		    memcpy(cmd.data, rxbuffer, rx_index);
-		    cmd.length = rx_index;
+    for (;;) {
+        if(HAL_UART_Receive(&hlpuart1, &rxbuffer[rx_index], 1, 100) == HAL_OK)
+        {
+            if(rxbuffer[rx_index] == '\n')
+            {
+                // CMD [ TYPE | CMD |DATA....]
+                if (rx_index >= 2) { // Ensure there are at least 2 bytes for type and cmd
+                    Command_t cmd;
+                    snprintf(syscheck, sizeof(syscheck), "Received byte: %d", rxbuffer[0]);
+                    logMessage(LOG_INFO, syscheck);
 
-		    /* Send command to processing task */
-		    osMessageQueuePut(cmdQueue, &cmd, 0, 0);
+                    uint8_t isAscii = (rxbuffer[0] >= '0' && rxbuffer[0] <= '2');
 
-		    /* Signal command processing task */
-		    osEventFlagsSet(cmdEventFlags, 0x01);
+                    // Determine the command type
+                    if(isAscii) {
+                        // ASCII input
+                        cmd.type = rxbuffer[0] - '0';
+                    } else if(rxbuffer[0] >= 0 && rxbuffer[0] <= 2) {
+                        // Integer input
+                        cmd.type = rxbuffer[0];
+                    } else {
+                        // Invalid input
+                        logMessage(LOG_WARNING, "Invalid command type");
+                        rx_index = 0;
+                        continue;
+                    }
 
-		    /* Reset buffer */
-		    rx_index = 0;
-		}
-		else
-		{
-		    rx_index++;
-		    if(rx_index >= UART_BUFFER_SIZE)
-		    {
-			    /* Buffer overflow, reset */
-			    logMessage(LOG_WARNING, "UART buffer overflow, resetting buffer");
-			    rx_index = 0;
-		    }
-		}
-	  }
+                    // Set command type based on the determined value
+                    cmd.type = (cmd.type == 0) ? PMBUS_CMD :
+                               (cmd.type == 1) ? SYSTEM_CMD : CONFIG_CMD;
 
-	osThreadYield(); // Allow other tasks to run
-	}
+                    // Convert command and data
+                    if(isAscii) {
+                        cmd.cmd = rxbuffer[1] - '0';
+                        cmd.length = 0;
+                        for(int i = 2; i < rx_index; i++) {
+                            if(rxbuffer[i] >= '0' && rxbuffer[i] <= '9') {
+                                cmd.data[cmd.length++] = rxbuffer[i] - '0';
+                            } else {
+                                logMessage(LOG_WARNING, "Invalid ASCII data");
+                                break;
+                            }
+                        }
+                    } else {
+                        cmd.cmd = rxbuffer[1];
+                        memcpy(cmd.data, &rxbuffer[2], rx_index - 2);
+                        cmd.length = rx_index - 2;
+                    }
+
+                    // Send command to processing task
+                    osMessageQueuePut(cmdQueue, &cmd, 0, 0);
+
+                    // Signal command processing task
+                    osEventFlagsSet(cmdEventFlags, 0x01);
+                } else {
+                    logMessage(LOG_WARNING, "Received incomplete command");
+                }
+
+                /* Reset buffer */
+                rx_index = 0;
+            }
+            else
+            {
+                rx_index++;
+                if(rx_index >= UART_BUFFER_SIZE)
+                {
+                    /* Buffer overflow, reset */
+                    logMessage(LOG_WARNING, "UART buffer overflow, resetting buffer");
+                    rx_index = 0;
+                }
+            }
+        }
+
+        osThreadYield(); // Allow other tasks to run
+    }
 }
+
 
 void PmbusTask(void *argument)
 {
@@ -280,8 +307,7 @@ void PmbusTask(void *argument)
 	  else
 	  {
 		/* Mutex acquisition failed, log error */
-		LogEntry log = {.level = 1, .message = "PMBUS mutex timeout", .timestamp = osKernelGetTickCount()};
-		osMessageQueuePut(logQueue, &log, 0, 0);
+		logMessage(LOG_ERROR,"PMBUS mutex timeout");
 	  }
 
 	  osThreadYield(); // Allow other tasks to run
@@ -341,8 +367,9 @@ void LogTask(void *argument)
     for(;;) {
         if (osMessageQueueGet(logQueue, &log, NULL, osWaitForever) == osOK) {
             // Format log message
-            int len = snprintf(buffer, sizeof(buffer), "[%lu] %s: %s\r\n",
-                               log.timestamp,
+            int len = snprintf(buffer, sizeof(buffer), "[%lu:%02lu:%02lu:%02lu] %s: %s\r\n",
+                               log.timestamp.days,log.timestamp.hours,
+					 log.timestamp.minutes,log.timestamp.seconds,
                                log.level == LOG_INFO ? "INFO" :
                                log.level == LOG_WARNING ? "WARNING" :
                                log.level == LOG_ERROR ? "ERROR" : "CRITICAL",
@@ -400,6 +427,8 @@ void SupervisorTask(void *argument)
         osDelay(1000); // Check every second
     }
 }
+
+
 
 void initWatchdog(void)
 {

@@ -34,6 +34,12 @@
 
 //Enums
 typedef enum{
+	MUTE,
+	NORMAL,
+	LOUD,
+}log_verbosity_t;
+
+typedef enum{
 	PMBUS_CMD,
 	SYSTEM_CMD,
 	CONFIG_CMD
@@ -62,9 +68,8 @@ typedef enum {
 typedef enum {
 	SYS_GET_OS_VERSION,
 	SYS_UPDATE_FIRMWARE,
-	SYS_STATUS,SYS_RESET,
+	SYS_RESET,
 	SYS_GET_UPTIME,
-	SYS_RUN_DIAGNOSTICS,
 	SYS_GET_MEMORY_STATS,
 	SYS_GET_CPU_USAGE,
 	SYS_GET_HARDWARE_INFO,
@@ -74,13 +79,21 @@ typedef enum {
 typedef struct {
 	uint8_t type;
 	uint8_t data[UART_BUFFER_SIZE];
+	uint8_t cmd;
 	uint16_t length;
 } Command_t;
+
+typedef struct{
+	uint32_t days;
+	uint32_t hours;
+	uint32_t minutes;
+	uint32_t seconds;
+}Uptime_t;
 
 typedef struct {
 	LogLevel level;
 	char message[MAX_LOG_MESSAGE];
-	uint32_t timestamp;
+	Uptime_t timestamp;
 } LogEntry;
 
 typedef struct {
@@ -91,6 +104,8 @@ typedef struct {
 } SystemState;
 
 typedef void (*CommandHandler)(Command_t *cmd);
+
+extern uint8_t log_verbosity;
 
 extern I2C_HandleTypeDef hi2c1;
 extern UART_HandleTypeDef hlpuart1;
@@ -118,6 +133,7 @@ extern osTimerId_t recoveryTimer;
 
 extern uint8_t rxbuffer[UART_BUFFER_SIZE];
 extern uint16_t rx_index;
+extern char syscheck[MAX_LOG_MESSAGE];
 
 extern void (*taskFunctions[MAX_TASKS])(void *);
 
@@ -160,6 +176,8 @@ void initRecoveryMechanisms(void);
 
 void initRTOS();
 
+Uptime_t getUpTime(void);
+
 void ProcessPmbusCommand(Command_t *cmd);
 void ProcessConfigCommand(Command_t *cmd);
 void ProcessSystemCommand(Command_t *cmd);
@@ -170,7 +188,6 @@ void SendOSVersion(void);
 void SendSystemStatus(void);
 void PerformSystemReset(void);
 void SendSystemUptime(void);
-void RunSystemDiagnostics(void);
 void SendMemoryStatistics(void);
 void SendCPUUsage(void);
 void SendHardwareInfo(void);
