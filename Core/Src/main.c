@@ -31,6 +31,8 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_LPUART1_UART_Init(void);
 void init_TIM6(void);
+static void MX_DMA_Init(void);
+void HardFault_Handler_C(uint32_t *hardfault_args);
 
 
 int main(void)
@@ -40,7 +42,9 @@ int main(void)
     MX_GPIO_Init();
     MX_LPUART1_UART_Init();
     init_TIM6();
+    //MX_DMA_Init();
     initWatchdog();
+    initPeripherals();
 
     /* Initialize CMSIS-RTOS2 */
     osKernelInitialize();
@@ -99,6 +103,19 @@ void SystemClock_Config(void)
   }
 }
 
+
+static void MX_DMA_Init(void)
+{
+  /* DMA controller clock enable */
+  __HAL_RCC_DMAMUX1_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
+}
 /**
   * @brief LPUART1 Initialization Function
   * @param None
@@ -213,13 +230,10 @@ void init_TIM6(void)
 
 void UartTask(void *argument)
 {
-	uint8_t rxbuffer[UART_BUFFER_SIZE];
-	uint16_t rx_index = 0;
-
 	for (;;) {
 		if(HAL_UART_Receive(&hlpuart1, &rxbuffer[rx_index], 1, 100) == HAL_OK)
 		{
-		if(rxbuffer[rx_index] == '\n' || rxbuffer[rx_index] == '\r')
+		if(rxbuffer[rx_index] == '\n')
 		{
 		    /* Complete command received */
 		    Command_t cmd;
@@ -248,7 +262,7 @@ void UartTask(void *argument)
 		}
 	  }
 
-	  osThreadYield(); // Allow other tasks to run
+	osThreadYield(); // Allow other tasks to run
 	}
 }
 
@@ -266,7 +280,7 @@ void PmbusTask(void *argument)
 	  else
 	  {
 		/* Mutex acquisition failed, log error */
-		LogMessage_t log = {.level = 1, .message = "Error: PMBUS mutex timeout"};
+		LogEntry log = {.level = 1, .message = "PMBUS mutex timeout", .timestamp = osKernelGetTickCount()};
 		osMessageQueuePut(logQueue, &log, 0, 0);
 	  }
 
@@ -335,8 +349,9 @@ void LogTask(void *argument)
                                log.message);
 
             // Transmit log message via UART with timeout
-            if (HAL_UART_Transmit(&hlpuart1, (uint8_t*)buffer, len, 1000) != HAL_OK) {
+            if (HAL_UART_Transmit(&hlpuart1, (uint8_t*)buffer, len, 100) != HAL_OK) {
                 // UART transmission failed
+            	logMessage(LOG_CRITICAL,"UART transmission failed");
             }
         }
 
@@ -362,7 +377,7 @@ void SupervisorTask(void *argument)
             osThreadGetState(taskHandles[1]) == osThreadBlocked)    // PMBUS Task
         {
             /* All main tasks are blocked, this might indicate a problem */
-            logMessage(LOG_CRITICAL, "Critical: All main tasks blocked");
+            logMessage(LOG_CRITICAL, "All main tasks blocked");
 
             /* Here you might want to implement a recovery mechanism */
             startIncrementalRecovery();
@@ -372,7 +387,7 @@ void SupervisorTask(void *argument)
         uint32_t current_time = osKernelGetTickCount();
         if (current_time - last_runtime > 1100) // allowing 10% margin
         {
-            logMessage(LOG_WARNING, "Warning: System overrun detected");
+            logMessage(LOG_WARNING, "System overrun detected");
         }
 
         last_runtime = current_time;
@@ -381,6 +396,7 @@ void SupervisorTask(void *argument)
             incrementalRecoveryStep();
         }
 
+        logMessage(LOG_INFO, "System heartbeat: Normal operation");
         osDelay(1000); // Check every second
     }
 }
@@ -401,6 +417,28 @@ void initWatchdog(void)
 void kickWatchdog(void)
 {
     HAL_IWDG_Refresh(&hiwdg);
+}
+
+void HardFault_Handler_C(uint32_t *hardfault_args) {
+    volatile uint32_t stacked_r0 = hardfault_args[0];
+    volatile uint32_t stacked_r1 = hardfault_args[1];
+    volatile uint32_t stacked_r2 = hardfault_args[2];
+    volatile uint32_t stacked_r3 = hardfault_args[3];
+    volatile uint32_t stacked_r12 = hardfault_args[4];
+    volatile uint32_t stacked_lr = hardfault_args[5];
+    volatile uint32_t stacked_pc = hardfault_args[6];
+    volatile uint32_t stacked_psr = hardfault_args[7];
+
+    volatile uint32_t _CFSR = SCB->CFSR;
+    volatile uint32_t _HFSR = SCB->HFSR;
+    volatile uint32_t _DFSR = SCB->DFSR;
+    volatile uint32_t _AFSR = SCB->AFSR;
+    volatile uint32_t _MMAR = SCB->MMFAR;
+    volatile uint32_t _BFAR = SCB->BFAR;
+
+    __asm("BKPT #0");
+
+    while (1);
 }
 /* USER CODE END 4 */
 

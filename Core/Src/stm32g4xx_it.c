@@ -83,14 +83,13 @@ void NMI_Handler(void)
   */
 void HardFault_Handler(void)
 {
-  /* USER CODE BEGIN HardFault_IRQn 0 */
-
-  /* USER CODE END HardFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
-  }
+	__asm volatile (
+		"TST lr, #4 \n"
+		"ITE EQ \n"
+		"MRSEQ r0, MSP \n"
+		"MRSNE r0, PSP \n"
+		"B HardFault_Handler_C \n"
+	);
 }
 
 /**

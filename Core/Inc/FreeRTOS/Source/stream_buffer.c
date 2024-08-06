@@ -35,9 +35,9 @@ task.h is included from an application file. */
 #define MPU_WRAPPERS_INCLUDED_FROM_API_FILE
 
 /* FreeRTOS includes. */
-#include "include/FreeRTOS.h"
-#include "include/task.h"
-#include "include/stream_buffer.h"
+#include "FreeRTOS/include/FreeRTOS.h"
+#include "FreeRTOS/include/task.h"
+#include "FreeRTOS/include/stream_buffer.h"
 
 #if( configUSE_TASK_NOTIFICATIONS != 1 )
 	#error configUSE_TASK_NOTIFICATIONS must be set to 1 to build stream_buffer.c

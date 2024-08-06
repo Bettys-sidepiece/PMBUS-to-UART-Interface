@@ -35,10 +35,10 @@ task.h is included from an application file. */
 #define MPU_WRAPPERS_INCLUDED_FROM_API_FILE
 
 /* FreeRTOS includes. */
-#include "include/FreeRTOS.h"
-#include "include/task.h"
-#include "include/timers.h"
-#include "include/stack_macros.h"
+#include "FreeRTOS/include/FreeRTOS.h"
+#include "FreeRTOS/include/task.h"
+#include "FreeRTOS/include/timers.h"
+#include "FreeRTOS/include/stack_macros.h"
 
 /* Lint e9021, e961 and e750 are suppressed as a MISRA exception justified
 because the MPU ports require MPU_WRAPPERS_INCLUDED_FROM_API_FILE to be defined

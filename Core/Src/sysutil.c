@@ -22,6 +22,9 @@ TaskHealth taskHealthStatus[MAX_TASKS];
 RecoveryStage currentRecoveryStage;
 osTimerId_t recoveryTimer;
 
+uint8_t rxbuffer[UART_BUFFER_SIZE];
+uint16_t rx_index = 0;
+
 static const CommandHandler commandHandlers[] = {
     [PAGE] = HandlePage,
     [OPERATION] = HandleOperation,
@@ -130,17 +133,22 @@ void (*taskFunctions[MAX_TASKS])(void *) = {
 };
 
 osThreadAttr_t taskAttributes[MAX_TASKS] = {
-	    {.name = "UART", .priority = osPriorityNormal, .stack_size = 128 * 4},
-	    {.name = "PMBUS", .priority = osPriorityHigh, .stack_size = 128 * 4},
-	    {.name = "CMD", .priority = osPriorityAboveNormal, .stack_size = 128 * 4},
-	    {.name = "LOG", .priority = osPriorityLow, .stack_size = 128 * 4},
-	    {.name = "SUP", .priority = osPriorityHigh1, .stack_size = 128 * 4}
-	};
+    {.name = "UART", .priority = osPriorityNormal, .stack_size = 256 * 4},
+    {.name = "PMBUS", .priority = osPriorityNormal, .stack_size = 256 * 4},
+    {.name = "CMD", .priority = osPriorityAboveNormal, .stack_size = 256 * 4},
+    {.name = "LOG", .priority = osPriorityAboveNormal, .stack_size = 256 * 4},
+    {.name = "SUP", .priority = osPriorityHigh, .stack_size = 256 * 4}
+};
 
 
+void initPeripherals(){
 
-void initLogging(void) {
-    logQueue = osMessageQueueNew(20, sizeof(LogEntry), NULL);
+	if(((LPUART1->CR1 & USART_CR1_RE)) == RESET){
+	  LPUART1->CR1 |= USART_CR1_RE; //Enable UART RX
+	}
+
+	I2C_Init();
+
 }
 
 void logMessage(LogLevel level, const char* message) {
@@ -153,19 +161,6 @@ void logMessage(LogLevel level, const char* message) {
     osMessageQueuePut(logQueue, &entry, 0, 0);
 }
 
-void saveSystemState(void) {
-    savedState.lastValidState = getCurrentSystemState();
-    savedState.lastValidVoltage = getCurrentVoltage();
-    savedState.lastValidCurrent = getCurrentCurrent();
-    // Save other important state variables
-}
-
-void restoreSystemState(void) {
-    setSystemState(savedState.lastValidState);
-    setVoltage(savedState.lastValidVoltage);
-    setCurrent(savedState.lastValidCurrent);
-    // Restore other important state variables
-}
 
 void stateTimerCallback(void *argument) {
     saveSystemState();
@@ -232,7 +227,6 @@ void startIncrementalRecovery(void) {
 void incrementalRecoveryStep(void) {
     switch (currentRecoveryStage) {
         case RECOVERY_STAGE_CORE:
-            restoreSystemState();
             freeUpResources();
             currentRecoveryStage = RECOVERY_STAGE_COMMUNICATION;
             break;
@@ -264,9 +258,7 @@ void incrementalRecoveryStep(void) {
 }
 
 void initIncrementalRecovery(void) {
-    osTimerAttr_t timer_attr = {
-        .name = "RecoveryTimer"
-    };
+    osTimerAttr_t timer_attr = {.name = "RecoveryTimer"};
     recoveryTimer = osTimerNew((osTimerFunc_t)incrementalRecoveryStep, osTimerOnce, NULL, &timer_attr);
 }
 
@@ -283,27 +275,24 @@ void initRTOS(){
 
     /* Create queues */
     cmdQueue = osMessageQueueNew(CMD_QUEUE_SIZE, sizeof(Command_t), NULL);
-    logQueue = osMessageQueueNew(LOG_QUEUE_SIZE, sizeof(LogMessage_t), NULL);
+    logQueue = osMessageQueueNew(LOG_QUEUE_SIZE, sizeof(LogEntry), NULL);
 
     /* Create event flags */
     cmdEventFlags = osEventFlagsNew(NULL);
+    /* Create tasks */
+      for(int i = 0; i < MAX_TASKS; i++){
+	    taskHandles[i] = osThreadNew(*taskFunctions[i], NULL, &taskAttributes[i]);
+	    if(taskHandles[i] == NULL){
+		    char bufx[MAX_LOG_MESSAGE];
+		    char* name = taskAttributes->name;
+		    snprintf(bufx, MAX_LOG_MESSAGE,"Error: Failed to create %s task", name);
+		    logMessage(LOG_ERROR,bufx);
+	    }
+    }
 
-    logTaskHandle = osThreadNew(LogTask, NULL, &taskAttributes[3]);
-
-    taskHandles[0] = osThreadNew(UartTask, NULL, &taskAttributes[0]);
-    taskHandles[1] = osThreadNew(PmbusTask, NULL, &taskAttributes[1]);
-    taskHandles[2] = osThreadNew(CommandProcessingTask, NULL, &taskAttributes[2]);
-    taskHandles[3] = osThreadNew(LogTask, NULL, &taskAttributes[3]);
-    taskHandles[4] = osThreadNew(SupervisorTask, NULL, &taskAttributes[4]);
+      logMessage(LOG_INFO,"ALL Tasks Configured and created");
 }
 
-uint32_t getCurrentSystemState(){return 1;}
-float getCurrentVoltage(){return 1.0f;}
-float getCurrentCurrent(){return 1.0f;}
-
-void setSystemState(uint32_t state){}
-void setVoltage(float state){}
-void setCurrent(float state){}
 
 // Command Processiing functions
 void ProcessPmbusCommand(Command_t *cmd) {
@@ -319,6 +308,91 @@ void ProcessPmbusCommand(Command_t *cmd) {
 }
 
 void ProcessSystemCommand(Command_t *cmd) {
+    SystemCmd sysCmd = (SystemCmd)cmd->type;
+
+    switch(sysCmd) {
+        case SYS_GET_OS_VERSION:
+            SendOSVersion();
+            break;
+
+        case SYS_UPDATE_FIRMWARE:
+            InitiateFirmwareUpdate();
+            break;
+
+        case SYS_STATUS:
+            SendSystemStatus();
+            break;
+
+        case SYS_RESET:
+            PerformSystemReset();
+            break;
+
+        case SYS_GET_UPTIME:
+            SendSystemUptime();
+            break;
+
+        case SYS_RUN_DIAGNOSTICS:
+            RunSystemDiagnostics();
+            break;
+
+        case SYS_GET_MEMORY_STATS:
+            SendMemoryStatistics();
+            break;
+
+        case SYS_GET_CPU_USAGE:
+            SendCPUUsage();
+            break;
+
+        case SYS_GET_HARDWARE_INFO:
+            SendHardwareInfo();
+            break;
+
+        default:
+      	  logMessage(LOG_ERROR,"Unknown system command");
+            break;
+    }
+}
+
+void SendResponse(const char* response) {
+	HAL_UART_Transmit(&hlpuart1, (uint8_t*)response, strlen(response), HAL_MAX_DELAY);
+}
+
+void SendOSVersion(void) {
+	char response[MAX_LOG_MESSAGE];
+	snprintf(response, sizeof(response), "OS Version: %s\r\n", OS_VERSION);
+	SendResponse(response);
+}
+
+void InitiateFirmwareUpdate(void){
+
+}
+
+void SendSystemStatus(void){
+
+}
+
+void PerformSystemReset(void){
+	logMessage(LOG_INFO,"Performing system reset...\r\n");
+	HAL_NVIC_SystemReset();
+}
+
+void SendSystemUptime(void){
+
+}
+
+void RunSystemDiagnostics(void){
+
+}
+
+void SendMemoryStatistics(void){
+
+}
+
+void SendCPUUsage(void){
+
+}
+
+void SendHardwareInfo(void){
 
 }
 
@@ -650,6 +724,7 @@ void HandleMfrSerial(Command_t *cmd) {
 void HandleIcDeviceId(Command_t *cmd) {
     // Process IC_DEVICE_ID command
     // For example, read the IC device ID
+
 }
 
 void HandleIcDeviceRev(Command_t *cmd) {

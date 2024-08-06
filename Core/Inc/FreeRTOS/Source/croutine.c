@@ -25,9 +25,9 @@
  * 1 tab == 4 spaces!
  */
 
-#include "include/FreeRTOS.h"
-#include "include/task.h"
-#include "include/croutine.h"
+#include "FreeRTOS/include/FreeRTOS.h"
+#include "FreeRTOS/include/task.h"
+#include "FreeRTOS/include/croutine.h"
 
 /* Remove the whole file is co-routines are not being used. */
 #if( configUSE_CO_ROUTINES != 0 )

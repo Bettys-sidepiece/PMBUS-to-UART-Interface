@@ -12,7 +12,9 @@
 #include <stdio.h>
 #include <string.h>
 #include "stm32g4xx_hal.h"
+#include "FreeRTOS/include/FreeRTOS.h"
 #include "CMSIS_RTOS_V2/cmsis_os2.h"
+#include "FreeRTOS/include/task.h"
 #include "smbus.h"
 #include "pmbus_device.h"
 
@@ -22,8 +24,13 @@
 #define UART_BUFFER_SIZE 256
 #define CMD_QUEUE_SIZE 10
 #define LOG_QUEUE_SIZE 20
-#define MAX_LOG_MESSAGE 100
+#define MAX_LOG_MESSAGE 128
 #define MAX_TASKS 5
+
+#define MAX_HARDWARE_INFO_LENGTH 256
+#define BOOTLOADER_START_ADDRESS 0x08000000  // Adjust this based on memory map
+
+#define OS_VERSION  "0.1.0"
 
 //Enums
 typedef enum{
@@ -33,47 +40,53 @@ typedef enum{
 }CmdType;
 
 typedef enum {
-    LOG_INFO = 0,
-    LOG_WARNING,
-    LOG_ERROR,
-    LOG_CRITICAL
+	LOG_INFO = 0,
+	LOG_WARNING,
+	LOG_ERROR,
+	LOG_CRITICAL
 } LogLevel;
 
 typedef enum {
-    TASK_HEALTHY,
-    TASK_SUSPECTED,
-    TASK_FAULTY
+	TASK_HEALTHY,
+	TASK_SUSPECTED,
+	TASK_FAULTY
 } TaskHealth;
 
 typedef enum {
-    RECOVERY_STAGE_CORE,
-    RECOVERY_STAGE_COMMUNICATION,
-    RECOVERY_STAGE_TASKS,
-    RECOVERY_STAGE_COMPLETE
+	RECOVERY_STAGE_CORE,
+	RECOVERY_STAGE_COMMUNICATION,
+	RECOVERY_STAGE_TASKS,
+	RECOVERY_STAGE_COMPLETE
 } RecoveryStage;
+
+typedef enum {
+	SYS_GET_OS_VERSION,
+	SYS_UPDATE_FIRMWARE,
+	SYS_STATUS,SYS_RESET,
+	SYS_GET_UPTIME,
+	SYS_RUN_DIAGNOSTICS,
+	SYS_GET_MEMORY_STATS,
+	SYS_GET_CPU_USAGE,
+	SYS_GET_HARDWARE_INFO,
+} SystemCmd;
 
 /* Structures */
 typedef struct {
-    uint8_t type;
-    uint8_t data[UART_BUFFER_SIZE];
-    uint16_t length;
+	uint8_t type;
+	uint8_t data[UART_BUFFER_SIZE];
+	uint16_t length;
 } Command_t;
 
 typedef struct {
-    uint8_t level;
-    char message[100];
-} LogMessage_t;
-
-typedef struct {
-    LogLevel level;
-    char message[MAX_LOG_MESSAGE];
-    uint32_t timestamp;
+	LogLevel level;
+	char message[MAX_LOG_MESSAGE];
+	uint32_t timestamp;
 } LogEntry;
 
 typedef struct {
-    uint32_t lastValidState;
-    float lastValidVoltage;
-    float lastValidCurrent;
+	uint32_t lastValidState;
+	float lastValidVoltage;
+	float lastValidCurrent;
     // Add other important state variables
 } SystemState;
 
@@ -103,7 +116,12 @@ extern TaskHealth taskHealthStatus[MAX_TASKS];
 extern RecoveryStage currentRecoveryStage;
 extern osTimerId_t recoveryTimer;
 
+extern uint8_t rxbuffer[UART_BUFFER_SIZE];
+extern uint16_t rx_index;
+
 extern void (*taskFunctions[MAX_TASKS])(void *);
+
+void initPeripherals();
 
 //WDG function prototypes
 void initWatchdog(void);
@@ -140,19 +158,22 @@ void initIncrementalRecovery(void);
 
 void initRecoveryMechanisms(void);
 
-uint32_t getCurrentSystemState();
-float getCurrentVoltage();
-float getCurrentCurrent();
-
-void setSystemState(uint32_t state);
-void setVoltage(float state);
-void setCurrent(float state);
-
 void initRTOS();
 
 void ProcessPmbusCommand(Command_t *cmd);
 void ProcessConfigCommand(Command_t *cmd);
 void ProcessSystemCommand(Command_t *cmd);
+
+void SendResponse(const char* response);
+void InitiateFirmwareUpdate(void);
+void SendOSVersion(void);
+void SendSystemStatus(void);
+void PerformSystemReset(void);
+void SendSystemUptime(void);
+void RunSystemDiagnostics(void);
+void SendMemoryStatistics(void);
+void SendCPUUsage(void);
+void SendHardwareInfo(void);
 
 //PMBUS Command Handler Fuction prototype
 void HandlePage(Command_t *cmd);

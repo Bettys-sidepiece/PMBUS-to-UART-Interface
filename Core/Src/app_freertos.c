@@ -18,8 +18,8 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
-#include "include/FreeRTOS.h"
-#include "include/task.h"
+#include "FreeRTOS/include/FreeRTOS.h"
+#include "FreeRTOS/include/task.h"
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/

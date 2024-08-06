@@ -24,8 +24,8 @@
 #define FREERTOS_MPOOL_H_
 
 #include <stdint.h>
-#include "include/FreeRTOS.h"
-#include "include/semphr.h"
+#include "FreeRTOS/include/FreeRTOS.h"
+#include "FreeRTOS/include/semphr.h"
 
 /* Memory Pool implementation definitions */
 #define MPOOL_STATUS              0x5EED0000U
