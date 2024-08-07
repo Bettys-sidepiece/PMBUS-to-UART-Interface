@@ -37,7 +37,8 @@ typedef enum{
 	MUTE,
 	NORMAL,
 	LOUD,
-}log_verbosity_t;
+	VERBOSE
+}LogVerbosity;
 
 typedef enum{
 	PMBUS_CMD,
@@ -46,6 +47,7 @@ typedef enum{
 }CmdType;
 
 typedef enum {
+	LOG_DEBUG=-1,
 	LOG_INFO = 0,
 	LOG_WARNING,
 	LOG_ERROR,
@@ -75,11 +77,24 @@ typedef enum {
 	SYS_GET_HARDWARE_INFO,
 } SystemCmd;
 
+typedef enum {
+	CONF_SET_ADDRESS,
+	CONF_GET_ADDRESS,
+	CONF_VERBOSE_LOGGING,
+	CONF_SET_UART_BAUD,
+	CONF_GET_UART_BAUD,
+	CONF_SET_PMBUS_FREQUENCY,
+	CONF_GET_PMBUS_FREQUENCY,
+	CONF_ENABLE_LOGGING,
+	CONF_DISABLE_LOGGING,
+	CONF_RESET_TO_DEFAULT,
+} ConfigCmd;
+
 /* Structures */
 typedef struct {
 	uint8_t type;
 	uint8_t data[UART_BUFFER_SIZE];
-	uint8_t cmd;
+	uint16_t cmd;
 	uint16_t length;
 } Command_t;
 

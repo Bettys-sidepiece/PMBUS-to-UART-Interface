@@ -156,7 +156,7 @@ void initPeripherals(){
 
 }
 
-void setLogVerbosity(log_verbosity_t verbose){
+void setLogVerbosity(LogVerbosity verbose) {
 	log_verbosity = verbose;
 	const char* str = (verbose == MUTE) ? "LOW":(verbose == NORMAL) ? "MEDIUM" : "HIGH";
 	snprintf(syscheck, sizeof(syscheck), "Log verbosity set to %s", str);
@@ -166,10 +166,11 @@ void setLogVerbosity(log_verbosity_t verbose){
 void logMessage(LogLevel level, const char* message) {
 	// MUTE: only LOG_CRITICAL and LOG_ERROR
     // NORMAL: LOG_CRITICAL, LOG_ERROR, and LOG_WARNING
-    // LOUD: all levels (LOG_CRITICAL, LOG_ERROR, LOG_WARNING, and LOG_INFO)
+    // LOUD: all levels (LOG_CRITICAL, LOG_ERROR, LOG_WARNING, LOG_INFO, and LOG_DEBUG)
     if ((log_verbosity == MUTE && level >= LOG_ERROR) ||
 	  (log_verbosity == NORMAL && level >= LOG_WARNING) ||
-	  (log_verbosity == LOUD)) {
+	  (log_verbosity == LOUD && level >= LOG_INFO )||
+	  (log_verbosity == VERBOSE)) {
 
 	    LogEntry entry;
 	    entry.level = level;
@@ -247,6 +248,7 @@ void isolateTask(int taskIndex) {
 }
 
 void startIncrementalRecovery(void) {
+    logMessage(LOG_DEBUG,"System recovery protocol initiated");
     currentRecoveryStage = RECOVERY_STAGE_CORE;
     incrementalRecoveryStep();
 }
@@ -254,17 +256,20 @@ void startIncrementalRecovery(void) {
 void incrementalRecoveryStep(void) {
     switch (currentRecoveryStage) {
         case RECOVERY_STAGE_CORE:
+      	logMessage(LOG_DEBUG,"[1] System core reset");
             freeUpResources();
             currentRecoveryStage = RECOVERY_STAGE_COMMUNICATION;
             break;
 
         case RECOVERY_STAGE_COMMUNICATION:
+      	logMessage(LOG_DEBUG,"[1] System communications reset");
             HAL_UART_Init(&hlpuart1);
             HAL_I2C_Init(&hi2c1);
             currentRecoveryStage = RECOVERY_STAGE_TASKS;
             break;
 
         case RECOVERY_STAGE_TASKS:
+      	logMessage(LOG_DEBUG,"[1] System task recovery");
             for (int i = 0; i < 5; i++) {
                 if (taskHealthStatus[i] == TASK_FAULTY) {
                     isolateTask(i);
@@ -274,7 +279,7 @@ void incrementalRecoveryStep(void) {
             break;
 
         case RECOVERY_STAGE_COMPLETE:
-            logMessage(LOG_INFO, "Incremental recovery complete");
+            logMessage(LOG_DEBUG, "System recovery protocol complete");
             break;
     }
 
@@ -297,6 +302,8 @@ void initRecoveryMechanisms(void) {
 }
 
 void initRTOS(){
+    SendOSVersion();
+    SendHardwareInfo();
     /* Create mutex */
     pmbusMutex = osMutexNew(NULL);
 
@@ -317,19 +324,19 @@ void initRTOS(){
 	    }
     }
 
-      logMessage(LOG_INFO,"ALL Tasks Configured and created");
+      logMessage(LOG_INFO,"All tasks succesfully configured and created");
+      logMessage(LOG_INFO,"System initialised and operational");
 }
 
 
 // Command Processiing functions
 void ProcessPmbusCommand(Command_t *cmd) {
-    p_cmd_t command = (p_cmd_t)cmd;
-
     char buff[64];
-    if (command < sizeof(commandHandlers) / sizeof(commandHandlers[0]) && commandHandlers[command]) {
-        commandHandlers[command](cmd);
+    logMessage(LOG_DEBUG,"PMBUS command is being processed");
+    if (cmd->cmd && cmd->cmd<0xFA) {
+        commandHandlers[cmd->cmd](cmd);
     } else {
-	    snprintf(buff,sizeof(buff),"Unknown or unimplemented PMBus command: 0x%02X",command);
+	    snprintf(buff,sizeof(buff),"Unknown or unimplemented PMBus command: 0x%02X",cmd->cmd);
 	    logMessage(LOG_WARNING,buff);
     }
 }
@@ -409,7 +416,7 @@ void SendSystemUptime(void) {
 
     char uptimeStr[64];
     int written = snprintf(uptimeStr, sizeof(uptimeStr),
-                           "System Uptime: %lu d:%lu h:%lu m:%lu s\r\n",
+                           "System Uptime: [%lu:%02lu:%02lu:%02lu]\r\n",
                            uptime.days, uptime.hours, uptime.minutes, uptime.seconds);
 
     if (written >= 0 && written < sizeof(uptimeStr)) {
@@ -454,7 +461,94 @@ void SendHardwareInfo(void){
 }
 
 void ProcessConfigCommand(Command_t *cmd) {
+    char response[50] = {0};
+    switch(cmd->cmd) {
+        case CONF_SET_ADDRESS:
 
+            break;
+
+        case CONF_GET_ADDRESS:
+
+            break;
+
+        case CONF_VERBOSE_LOGGING:
+            if (cmd->length > 0) {
+                switch(cmd->data[0]) {
+                    case 0:
+                        log_verbosity = MUTE;
+                        snprintf(response, sizeof(response), "Log verbosity set to MUTE\r\n");
+                        break;
+                    case 1:
+                        log_verbosity = NORMAL;
+                        snprintf(response, sizeof(response), "Log verbosity set to NORMAL\r\n");
+                        break;
+                    case 2:
+                        log_verbosity = LOUD;
+                        snprintf(response, sizeof(response), "Log verbosity set to LOUD\r\n");
+                        break;
+                    case 3:
+                        log_verbosity = VERBOSE;
+                        snprintf(response, sizeof(response), "Log verbosity set to VERBOSE\r\n");
+                        break;
+                    default:
+                        snprintf(response, sizeof(response), "Invalid verbosity level\r\n");
+                        logMessage(LOG_WARNING, response);
+                        break;
+                }
+            } else {
+                (log_verbosity == MUTE ? strcpy(response,"MUTE"):
+		    log_verbosity == NORMAL ? strcpy(response,"NORMAL"):
+		    log_verbosity == LOUD ? strcpy(response,"LOUD"):
+				    strcpy(response,"VERBOSE"));
+                snprintf(syscheck, sizeof(syscheck), "Current log verbosity: %s\r\n", response);
+                SendResponse(syscheck);
+            }
+            logMessage(LOG_INFO, response);
+            break;
+
+        case CONF_SET_UART_BAUD:
+
+            break;
+
+        case CONF_GET_UART_BAUD:
+
+            logMessage(LOG_INFO, response);
+            break;
+
+        case CONF_SET_PMBUS_FREQUENCY:
+
+            break;
+
+        case CONF_GET_PMBUS_FREQUENCY:
+
+            break;
+
+        case CONF_ENABLE_LOGGING:
+            //EnableLogging();
+            snprintf(response, sizeof(response), "Logging enabled\r\n");
+            logMessage(LOG_INFO, response);
+            break;
+
+        case CONF_DISABLE_LOGGING:
+            //DisableLogging();
+            snprintf(response, sizeof(response), "Logging disabled\r\n");
+            logMessage(LOG_INFO, response);
+            break;
+
+        case CONF_RESET_TO_DEFAULT:
+            //ResetToDefaultSettings();
+            snprintf(response, sizeof(response), "Reset to default settings\r\n");
+            logMessage(LOG_INFO, response);
+            break;
+
+        default:
+            snprintf(response, sizeof(response), "Unknown configuration command\r\n");
+            logMessage(LOG_WARNING, response);
+            break;
+    }
+
+    // Send the response back via UART
+    SendResponse(response);
 }
 
 //PMBUS Command Handlers

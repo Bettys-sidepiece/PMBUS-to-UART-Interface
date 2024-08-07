@@ -213,56 +213,48 @@ void init_TIM6(void)
 }
 
 
-void UartTask(void *argument)
-{
+void UartTask(void *argument) {
     for (;;) {
-        if(HAL_UART_Receive(&hlpuart1, &rxbuffer[rx_index], 1, 100) == HAL_OK)
-        {
-            if(rxbuffer[rx_index] == '\n')
-            {
-                // CMD [ TYPE | CMD |DATA....]
-                if (rx_index >= 2) { // Ensure there are at least 2 bytes for type and cmd
+        if (HAL_UART_Receive(&hlpuart1, &rxbuffer[rx_index], 1, 100) == HAL_OK) {
+            if (rxbuffer[rx_index] == '\n') {
+                // Ensure there are at least 4 bytes for type and cmd
+                if (rx_index >= 4) {
                     Command_t cmd;
-                    snprintf(syscheck, sizeof(syscheck), "Received byte: %d", rxbuffer[0]);
-                    logMessage(LOG_INFO, syscheck);
-
-                    uint8_t isAscii = (rxbuffer[0] >= '0' && rxbuffer[0] <= '2');
-
+                    snprintf(syscheck, sizeof(syscheck), "Raw Message: %c %c %c %c",
+                             rxbuffer[0], rxbuffer[1], rxbuffer[2], rxbuffer[3]);
+                    logMessage(LOG_DEBUG, syscheck);
                     // Determine the command type
-                    if(isAscii) {
-                        // ASCII input
-                        cmd.type = rxbuffer[0] - '0';
-                    } else if(rxbuffer[0] >= 0 && rxbuffer[0] <= 2) {
-                        // Integer input
-                        cmd.type = rxbuffer[0];
-                    } else {
-                        // Invalid input
-                        logMessage(LOG_WARNING, "Invalid command type");
-                        rx_index = 0;
-                        continue;
-                    }
+                    cmd.type = rxbuffer[0] - '0'; // Assuming single-digit type
+
+                    snprintf(syscheck, sizeof(syscheck), "Command type: %d", cmd.type);
+                    logMessage(LOG_DEBUG, syscheck);
 
                     // Set command type based on the determined value
                     cmd.type = (cmd.type == 0) ? PMBUS_CMD :
                                (cmd.type == 1) ? SYSTEM_CMD : CONFIG_CMD;
 
-                    // Convert command and data
-                    if(isAscii) {
-                        cmd.cmd = rxbuffer[1] - '0';
-                        cmd.length = 0;
-                        for(int i = 2; i < rx_index; i++) {
-                            if(rxbuffer[i] >= '0' && rxbuffer[i] <= '9') {
-                                cmd.data[cmd.length++] = rxbuffer[i] - '0';
-                            } else {
-                                logMessage(LOG_WARNING, "Invalid ASCII data");
-                                break;
-                            }
-                        }
-                    } else {
-                        cmd.cmd = rxbuffer[1];
-                        memcpy(cmd.data, &rxbuffer[2], rx_index - 2);
-                        cmd.length = rx_index - 2;
+                    int parsed_value = (rxbuffer[1] - '0') * 100 + (rxbuffer[2] - '0') * 10 + (rxbuffer[3] - '0');
+                    snprintf(syscheck, sizeof(syscheck), "Parsed value: %d", parsed_value);
+                    logMessage(LOG_DEBUG, syscheck);
+
+                    // Parse command
+                    cmd.cmd = (rxbuffer[1] - '0') * 100 + (rxbuffer[2] - '0') * 10 + (rxbuffer[3] - '0');
+                    snprintf(syscheck, sizeof(syscheck), "Command: %d", cmd.cmd);
+                    logMessage(LOG_DEBUG, syscheck);
+
+                    // Convert data from ASCII to integers
+                    cmd.length = 0;
+                    for (int i = 4; i < rx_index; i++) {
+			  if (rxbuffer[i] >= '0' && rxbuffer[i] <= '9') {
+			  cmd.data[cmd.length++] = rxbuffer[i] - '0';
+			  } else {
+				 logMessage(LOG_WARNING, "Invalid ASCII data");
+				 break;
+			 	 }
                     }
+
+                    snprintf(syscheck, sizeof(syscheck), "Data length: %d", cmd.length);
+                    logMessage(LOG_DEBUG, syscheck);
 
                     // Send command to processing task
                     osMessageQueuePut(cmdQueue, &cmd, 0, 0);
@@ -273,15 +265,12 @@ void UartTask(void *argument)
                     logMessage(LOG_WARNING, "Received incomplete command");
                 }
 
-                /* Reset buffer */
+                // Reset buffer
                 rx_index = 0;
-            }
-            else
-            {
+            } else {
                 rx_index++;
-                if(rx_index >= UART_BUFFER_SIZE)
-                {
-                    /* Buffer overflow, reset */
+                if (rx_index >= UART_BUFFER_SIZE) {
+                    // Buffer overflow, reset
                     logMessage(LOG_WARNING, "UART buffer overflow, resetting buffer");
                     rx_index = 0;
                 }
@@ -291,6 +280,7 @@ void UartTask(void *argument)
         osThreadYield(); // Allow other tasks to run
     }
 }
+
 
 
 void PmbusTask(void *argument)
@@ -322,7 +312,7 @@ void CommandProcessingTask(void *argument)
         osStatus_t status = osEventFlagsWait(cmdEventFlags, 0x01, osFlagsWaitAny, 5000);  // 5 second timeout
 
         if (status == osErrorTimeout) {
-            logMessage(LOG_WARNING, "Command processing task timeout");
+            logMessage(LOG_INFO, "Command processing task timeout");
             continue;
         }
 
@@ -372,7 +362,8 @@ void LogTask(void *argument)
 					 log.timestamp.minutes,log.timestamp.seconds,
                                log.level == LOG_INFO ? "INFO" :
                                log.level == LOG_WARNING ? "WARNING" :
-                               log.level == LOG_ERROR ? "ERROR" : "CRITICAL",
+                               log.level == LOG_ERROR ? "ERROR" :
+					 log.level == LOG_CRITICAL ? "CRITICAL" : "DEBUG",
                                log.message);
 
             // Transmit log message via UART with timeout
@@ -449,6 +440,8 @@ void kickWatchdog(void)
 }
 
 void HardFault_Handler_C(uint32_t *hardfault_args) {
+
+    logMessage(LOG_CRITICAL,"Fatal System Error (Hard Fault)");
     volatile uint32_t stacked_r0 = hardfault_args[0];
     volatile uint32_t stacked_r1 = hardfault_args[1];
     volatile uint32_t stacked_r2 = hardfault_args[2];
