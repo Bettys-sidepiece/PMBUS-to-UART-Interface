@@ -48,7 +48,7 @@ This project implements a UART to PMBus (version 1.3) interface with system mana
 ## Usage
 
 Send commands via UART in the following format:
-`<command_type>``<command_code>``<data>`\n
+`<command_type>` `<command_code>` `<data>` `<\n>`
 
 Where:
 - `<command_type>` is 0 for PMBus, 1 for System, 2 for Config
