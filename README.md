@@ -21,6 +21,7 @@ All commands follow this general structure:
 [TYPE][CMD][DATA]\n
 ```
 
+<<<<<<< HEAD
 - `[TYPE]`: Single digit representing the command type
   - `0`: PMBus command
   - `1`: System command
@@ -28,6 +29,42 @@ All commands follow this general structure:
 - `[CMD]`: Three-digit command code
 - `[DATA]`: Optional data (format depends on the command)
 - `\n`: Newline character (required to end the command)
+=======
+## Configuration Commands
+
+- `CONF_SET_ADDRESS` (000): Set PMBus address
+- `CONF_GET_ADDRESS` (001): Get current PMBus address
+- `CONF_VERBOSE_LOGGING` (002): Set log verbosity
+- `CONF_SET_UART_BAUD` (003): Set UART baud rate
+- `CONF_GET_UART_BAUD` (004): Get current UART baud rate
+- `CONF_SET_PMBUS_FREQUENCY` (005): Set PMBus frequency
+- `CONF_GET_PMBUS_FREQUENCY` (006): Get current PMBus frequency
+- `CONF_ENABLE_LOGGING` (007): Enable logging
+- `CONF_DISABLE_LOGGING` (008): Disable logging
+- `CONF_RESET_TO_DEFAULT` (009): Reset to default settings
+
+## Log Verbosity Levels
+
+- MUTE (0): Only critical and error messages
+- NORMAL (1): Critical, error, and warning messages
+- LOUD (2): All messages except debug
+- VERBOSE (3): All messages including debug
+
+## Usage
+
+Send commands via UART in the following format:
+`<command_type>` `<command_code>` `<data>` `<\n>`
+
+Where:
+- `<command_type>` is 0 for PMBus, 1 for System, 2 for Config
+- `<command_code>` is a three-digit number
+- `<data>` is optional and command-specific
+- `\n` is the newline character
+
+Example: 20021\n
+
+This sets the log verbosity to NORMAL.
+>>>>>>> refs/remotes/origin/Master
 
 ## PMBus Commands
 
@@ -35,6 +72,7 @@ PMBus commands interact directly with the PMBus device. They include an addition
 
 Format: `[0][CMD][R/W][DATA][\n]`
 
+<<<<<<< HEAD
 - `[R/W]`: `0` for read, `1` for write
 - `[DATA]`: Hexadecimal data for write operations (omitted for read operations)
 
@@ -392,3 +430,6 @@ D --> I[Supervisor Task]
 
     classDef emphasisBox fill:#f9f,stroke:#333,stroke-width:4px;
     class R,U,V,W,X,Y emphasisBox;
+=======
+Some functions are not fully implemented in the provided code and may need to be completed based on specific hardware and system requirements.
+>>>>>>> refs/remotes/origin/Master
