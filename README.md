@@ -342,7 +342,7 @@ Example:
 | USER_DATA_00 to USER_DATA_12 | 176-188 | Read/Write user data 00 to 12 |
 
 Note: This list includes all the PMBus commands implemented in this system. Some commands may have specific data formats or restrictions. Always refer to the PMBus specification and your device's datasheet for detailed information on how to use each command.
-```markdown
+
 ```marmaid
 graph TD
     %% System Initialization
@@ -429,7 +429,6 @@ graph TD
 
     classDef emphasisBox fill:#f9f,stroke:#333,stroke-width:4px;
     class R,U,V,W,X,Y emphasisBox; 
-```
 ```
 
 Some functions are not fully implemented in the provided code and may need to be completed based on specific hardware and system requirements.
