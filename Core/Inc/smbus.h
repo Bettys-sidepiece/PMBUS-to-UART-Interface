@@ -2,7 +2,8 @@
 #define INC_SMBUS_H_
 
 #include <stdint.h>
-#include <stm32g474xx.h>
+#include "stm32g474xx.h"
+#include "stm32g4xx.h"
 
 #define BUFFERSIZE	258
 
@@ -32,7 +33,26 @@
 #define I2C_TIMINGR_400KHZ   I2C_TIMINGR_CONFIG(1, 3, 2, 0x3, 0x9)
 #define I2C_TIMINGR_1MHZ     I2C_TIMINGR_CONFIG(0, 2, 0, 0x2, 0x4)
 
+typedef struct {
+    uint8_t presc;
+    uint8_t scll;
+    uint8_t sclh;
+    uint8_t sdadel;
+    uint8_t scldel;
+} i2c_timingr_config_t;
+
+typedef enum{
+	STD_MODE,
+	FAST_MODE_1,
+	FAST_PLUS_MODE_1,
+	FAST_MODE_2,
+	FAST_PLUS_MODE_2
+}i2c_freq_t;
+
+
 // Basic I2C operations
+uint8_t setI2cFreq(i2c_freq_t freq_mode);
+uint32_t get_i2c_timing_config(i2c_freq_t freq_mode);
 void I2C_Init(void);
 void EnableI2C(void);
 void DisableI2C(void);
@@ -41,6 +61,7 @@ void I2C_Stop(uint8_t devAddress);
 void I2C_WriteByte(uint8_t data);
 uint8_t I2C_ReadByte(void);
 uint8_t I2C_WaitAck(void);
+extern i2c_freq_t pmbusSpeed;
 
 // PMBus operations
 uint8_t CRC8(const uint8_t* data, uint32_t length);
@@ -67,9 +88,14 @@ float ulinear16_to_float(unsigned int number, unsigned char vout_mode);
 
 // Declare the LUT_linear_exponents array
 extern const float LUT_linear_exponents[32];
+extern const uint8_t crc_table[256];
 
 //PMBUS Commands
 uint8_t clearfaults(uint8_t devAddress);
+uint8_t saveToNVM(uint8_t devAddress);
+uint8_t setWriteStatus(uint8_t devAddress, uint8_t data, uint8_t status);
+uint8_t getWriteStatus(uint8_t devAddress, uint8_t* buffer);
+uint8_t restoreDevice(uint8_t devAddress, uint8_t status);
 uint8_t readDeviceID(uint8_t devAddress, uint8_t* buffer);
 uint8_t PMBUSRev(uint8_t devAddress, uint8_t* buffer);
 uint8_t getCap(uint8_t devAddress, uint8_t* buffer);
@@ -83,6 +109,25 @@ uint8_t setPage(uint8_t devAddress, uint8_t data);
 uint8_t getPhase(uint8_t devAddress, uint8_t* buffer);
 uint8_t setPhase(uint8_t devAddress, uint8_t data);
 uint8_t getOpStatus(uint8_t devAddress, uint8_t* buffer);
-uint8_t setOpstatus(uint8_t devAddress, uint8_t data);
+uint8_t setOpStatus(uint8_t devAddress, uint8_t data);
+uint8_t setOnOffConfig(uint8_t devAddress, uint8_t data);
+uint8_t getOnOffConfig(uint8_t devAddress, uint8_t* buffer);
+uint8_t getVoutMode(uint8_t devAddress, uint8_t* buffer);
+uint8_t getVoutCommand(uint8_t devAddress, uint16_t* buffer);
+uint8_t setVoutCommand(uint8_t devAddress, uint16_t data);
+uint8_t getVoutMax(uint8_t devAddress, uint16_t* buffer);
+uint8_t setVoutMax(uint8_t devAddress, uint16_t data);
+uint8_t getVoutMarginHigh(uint8_t devAddress, uint16_t* buffer);
+uint8_t setVoutMarginHigh(uint8_t devAddress, uint16_t data);
+uint8_t getVoutMarginLow(uint8_t devAddress, uint16_t* buffer);
+uint8_t setVoutMarginLow(uint8_t devAddress, uint16_t data);
+uint8_t getStatusByte(uint8_t devAddress, uint8_t* buffer);
+uint8_t getStatusWord(uint8_t devAddress, uint16_t* buffer);
+uint8_t getStatusVout(uint8_t devAddress, uint8_t* buffer);
+uint8_t getStatusIout(uint8_t devAddress, uint8_t* buffer);
+uint8_t getStatusInput(uint8_t devAddress, uint8_t* buffer);
+uint8_t getStatusTemperature(uint8_t devAddress, uint8_t* buffer);
+uint8_t getStatusCml(uint8_t devAddress, uint8_t* buffer);
+uint8_t getStatusMfrSpecific(uint8_t devAddress, uint8_t* buffer);
 
 #endif /* INC_SMBUS_H_ */

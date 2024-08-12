@@ -1,7 +1,17 @@
-#include "stm32g4xx.h"
 #include "smbus.h"
 
 //---------------------------------------------------------------------I2C Configuration--------------------------------------------------------------------------//
+i2c_freq_t pmbusSpeed = STD_MODE;
+
+// Create the I2C timing configuration instance
+const i2c_timingr_config_t i2c_timing_config[] = {
+    [STD_MODE] = {3, 0x13, 0x0F, 0x02, 0x04},
+    [FAST_MODE_1] = {1, 0x09, 0x03, 0x02, 0x03},
+    [FAST_PLUS_MODE_1] = {0, 0x04, 0x02, 0x00, 0x02},
+    [FAST_MODE_2] = {1, 0x0B, 0x05, 0x02, 0x03},  // Slightly longer SCLL and SCLH
+    [FAST_PLUS_MODE_2] = {0, 0x06, 0x04, 0x00, 0x02},  // Slightly longer SCLL and SCLH
+};
+
 void I2C_Init(void) {
     // Enable GPIOA and GPIOB clocks
     RCC->AHB2ENR |= RCC_AHB2ENR_GPIOAEN | RCC_AHB2ENR_GPIOBEN;
@@ -37,8 +47,10 @@ void I2C_Init(void) {
     // Configure I2C1
     I2C1->CR1 = 0;  // Disable I2C
 
-    // Set I2C timing for 400kHz (example value, you need to calculate this based on your clock configuration)
-    I2C1->TIMINGR = I2C_TIMINGR_100KHZ;
+    // Set I2C timing for 400kHz
+    //I2C1->TIMINGR = I2C_TIMINGR_100KHZ;
+    I2C1->TIMINGR = get_i2c_timing_config(pmbusSpeed);
+
 
     // Enable SMBus master mode and related features
     I2C1->CR1 |= I2C_CR1_SMBHEN;  // Enable SMBus host mode
@@ -55,6 +67,32 @@ void I2C_Init(void) {
     I2C1->ICR |= I2C_ICR_STOPCF;
 }
 
+// Function to get the timing configuration for a specific speed mode
+uint32_t get_i2c_timing_config(i2c_freq_t freq_mode) {
+	const i2c_timingr_config_t* config;
+
+	if (freq_mode <= FAST_PLUS_MODE_1) {
+		config = &i2c_timing_config[freq_mode];
+	} else {
+		// Default to Standard Mode if an invalid mode is provided
+		config = &i2c_timing_config[STD_MODE];
+	}
+
+	return (config->presc << 28) |
+		(config->scldel << 20) |
+		(config->sdadel << 16) |
+		(config->sclh << 8) |
+		(config->scll);
+}
+
+uint8_t setI2cFreq(i2c_freq_t freq_mode){
+	pmbusSpeed = freq_mode;
+	if(pmbusSpeed >= STD_MODE && pmbusSpeed <= FAST_PLUS_MODE_2){
+		I2C1->TIMINGR = get_i2c_timing_config(freq_mode);
+		return 0;
+	}
+	return 1;
+}
 
 void EnableI2C(void)
 {
@@ -129,17 +167,9 @@ uint8_t pecbyte = 0;
 uint8_t CRC8(const uint8_t* data, uint32_t length)
 {
     uint8_t crc = 0;
-    uint8_t polynomial = 0x07; // CRC-8 polynomial
 
-    for (uint32_t i = 0; i < length; ++i) {
-        crc ^= data[i];
-        for (uint8_t j = 0; j < 8; ++j) {
-            if (crc & 0x80) {
-                crc = (crc << 1) ^ polynomial;
-            } else {
-                crc <<= 1;
-            }
-        }
+    for (uint32_t i = 0; i < length; i++) {
+        crc = crc_table[crc ^ data[i]];
     }
 
     return crc;
@@ -229,7 +259,7 @@ uint8_t PMBUS_WriteByte(uint8_t devAddress, uint8_t command, uint8_t data) {
     }
 
     // Set slave address (shifted left by 1) with Write bit (0) and number of bytes to send
-    I2C1->CR2 = (devAddress << 1) | (3 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_RELOAD;
+    I2C1->CR2 = (devAddress << 1) | (4 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_RELOAD;
 
     // Write command byte
     I2C1->TXDR = command;
@@ -296,7 +326,7 @@ uint8_t PMBUS_ReadByte(uint8_t devAddress, uint8_t command, uint8_t *data) {
     if (!checkForNack()) return 0;
 
     // Prepare buffer for PEC calculation
-    buffer[0] = (devAddress << 1) | 1;  // Read operation (address + read bit)
+    buffer[0] = (devAddress << 1);  // Read operation (address + read bit)
     buffer[1] = command;
 
     // Read data and PEC
@@ -304,7 +334,8 @@ uint8_t PMBUS_ReadByte(uint8_t devAddress, uint8_t command, uint8_t *data) {
     timeout = 10000;
     while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) break;
     *data = I2C1->RXDR;
-    buffer[2] = *data;
+    buffer[2] = (devAddress << 1) | 1;
+    buffer[3] = *data;
 
     timeout = 10000;
     while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) break;
@@ -316,7 +347,7 @@ uint8_t PMBUS_ReadByte(uint8_t devAddress, uint8_t command, uint8_t *data) {
     }
 
     // Calculate PEC
-    pec_calculated = CRC8(buffer, 3);
+    pec_calculated = CRC8(buffer, 4);
 
     // Validate PEC
     if (pec_received != pec_calculated) {
@@ -365,35 +396,38 @@ uint8_t PMBUS_WriteWord(uint8_t devAddress, uint8_t command, uint16_t data) {
 
     // Wait until transmission is complete
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) break;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
     if (!checkForNack()) return 0;
 
-    // Write low byte
+    // Write data low byte
     I2C1->TXDR = data & 0xFF;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) break;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
     if (!checkForNack()) return 0;
 
-    // Write high byte
+    // Write data high byte
     I2C1->TXDR = (data >> 8) & 0xFF;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) break;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
     if (!checkForNack()) return 0;
 
     // Write PEC byte
     I2C1->TXDR = pec;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) break;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
     if (!checkForNack()) return 0;
 
-    // Ensure STOPF is handled correctly
+    // Generate stop condition
     if (!(I2C1->ISR & I2C_ISR_STOPF)) {
         I2C1->CR2 |= I2C_CR2_STOP;
-        if (I2C1->ISR & I2C_ISR_STOPF) I2C1->ICR |= I2C_ICR_STOPCF;
+        if (I2C1->ISR & I2C_ISR_STOPF) {
+            I2C1->ICR |= I2C_ICR_STOPCF;
+        }
     }
 
     return 1;  // Success
 }
+
 
 /**
  * @brief Reads a 16-bit word (2 bytes) from a PMBus device.
@@ -431,8 +465,9 @@ uint8_t PMBUS_ReadWord(uint8_t devAddress, uint8_t command, uint16_t *data) {
     if (!checkForNack()) return 0;
 
     // Prepare buffer for PEC calculation
-    buffer[0] = (devAddress << 1) | 1;  // Read operation (address + read bit)
+    buffer[0] = (devAddress << 1);  // Read operation (address + read bit)
     buffer[1] = command;
+    buffer[2] = (devAddress << 1) | 1;  // Read operation
 
     // Read data and PEC
     I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (3 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_AUTOEND;
@@ -456,7 +491,7 @@ uint8_t PMBUS_ReadWord(uint8_t devAddress, uint8_t command, uint16_t *data) {
     }
 
     // Calculate PEC
-    pec_calculated = CRC8(buffer, 4);
+    pec_calculated = CRC8(buffer, 5);
 
     // Validate PEC
     if (pec_received != pec_calculated) {
@@ -594,23 +629,24 @@ uint8_t PMBUS_BlockRead(uint8_t devAddress, uint8_t command, uint8_t *data, uint
     byte_count = I2C1->RXDR;
 
     // Prepare buffer for PEC calculation
-    buffer[0] = (devAddress << 1) | 1;  // Read operation (address + read bit)
+    buffer[0] = (devAddress << 1);  // Read operation (address + read bit)
     buffer[1] = command;
-    buffer[2] = byte_count;  // Byte count
+    buffer[2] = (devAddress << 1) | 1;
+    buffer[3] = byte_count;  // Byte count
     // Read data
     I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (byte_count << I2C_CR2_NBYTES_Pos) | I2C_CR2_RELOAD;
     for (uint8_t i = 0; i < byte_count; i++) {
 	    timeout = 10000;
 	    while (!(I2C1->ISR & I2C_ISR_RXNE))if(--timeout==0)break;
 	    data[i] = I2C1->RXDR;
-	    buffer[3 + i] = data[i];  // Store data for PEC calculation
+	    buffer[4 + i] = data[i];  // Store data for PEC calculation
     }
 
     // Read PEC
     I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (1 << I2C_CR2_NBYTES_Pos);
 
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_RXNE))if(--timeout==0)break;
+    while (!(I2C1->ISR & I2C_ISR_RXNE))break;
     pec_received = I2C1->RXDR;
 
     if(!(I2C1->ISR & I2C_ISR_STOPF))
@@ -665,14 +701,20 @@ uint8_t PMBUS_BlockWriteBlockRead(uint8_t devAddress, uint8_t command,
     // Ensure the I2C bus is not busy
     while (I2C1->ISR & I2C_ISR_BUSY);
 
-    // Set slave address with Write bit and number of bytes to send
-    I2C1->CR2 = (devAddress << 1) | ((write_count + 2) << I2C_CR2_NBYTES_Pos) | I2C_CR2_START;
+
 
     // Prepare buffer for PEC calculation
     buffer[0] = devAddress << 1;
     buffer[1] = command;
-    pec = CRC8(buffer, 2);
+    buffer[2] = write_count;
+    for (uint8_t i = 0; i < write_count; i++) {
+	buffer[3 + i] = write_data[i];
+    }
 
+    pec = CRC8(buffer, write_count + 3);
+
+    // Set slave address with Write bit and number of bytes to send
+    I2C1->CR2 = (devAddress << 1) | ((write_count + 2) << I2C_CR2_NBYTES_Pos) | I2C_CR2_START;
     // Write command byte
     I2C1->TXDR = command;
     timeout = 10000;
@@ -688,11 +730,10 @@ uint8_t PMBUS_BlockWriteBlockRead(uint8_t devAddress, uint8_t command,
 
     // Write data
     for (uint8_t i = 0; i < write_count; i++) {
-        I2C1->TXDR = write_data[i];
-        pec = CRC8(&write_data[i], 1);
-        timeout = 10000;
-        while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
-        if (I2C1->ISR & I2C_ISR_NACKF) return 0;
+	    I2C1->TXDR = write_data[i];
+	    timeout = 10000;
+	    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
+	    if (I2C1->ISR & I2C_ISR_NACKF) return 0;
     }
 
     // Send PEC byte
@@ -706,11 +747,11 @@ uint8_t PMBUS_BlockWriteBlockRead(uint8_t devAddress, uint8_t command,
     timeout = 10000;
     while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return 0;
     uint8_t byte_count = I2C1->RXDR;
-    buffer[0] = (devAddress << 1) | 1;
-    buffer[1] = byte_count;
-    pec = CRC8(buffer, 2);
 
-    if (byte_count > *read_count) return 0;
+    buffer[0] = devAddress << 1;
+    buffer[1] = command;
+    buffer[2] = (devAddress << 1) | 1;
+    buffer[3] = byte_count;
 
     // Read data
     I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (byte_count << I2C_CR2_NBYTES_Pos) | I2C_CR2_AUTOEND;
@@ -718,14 +759,18 @@ uint8_t PMBUS_BlockWriteBlockRead(uint8_t devAddress, uint8_t command,
         timeout = 10000;
         while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return 0;
         read_data[i] = I2C1->RXDR;
-        pec = CRC8(&read_data[i], 1);
+        buffer[4 + i] = read_data[i];
     }
 
     // Read PEC
     timeout = 10000;
     while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return 0;
     uint8_t received_pec = I2C1->RXDR;
-    if (received_pec != pec) pecbyte=0;
+
+    // Calculate PEC for read operation
+    pec = CRC8(buffer, byte_count + 4);
+
+    if (received_pec != pec) return 0; // PEC mismatch
 
     // Ensure stop condition
     if (!(I2C1->ISR & I2C_ISR_STOPF)) {
@@ -738,287 +783,3 @@ uint8_t PMBUS_BlockWriteBlockRead(uint8_t devAddress, uint8_t command,
     return 1;
 }
 
-
-//---------------------------------------------------------------PMBUS SUPPORT Functions------------------------------------------------------------------//
-
-void decimalToWord(uint16_t decimal, uint16_t* buffer) {
-    uint8_t highByte = (decimal >> 8) & 0xFF;  // Extract high byte
-    uint8_t lowByte = decimal & 0xFF;           // Extract low byte
-
-    buffer[1] = highByte;
-    buffer[2] = lowByte;
-}
-
-void intToHex(uint32_t number, uint8_t* buffer)
-{
-    for (int i = 0; i < 24; i++)
-    {
-        buffer[i] = (number >> (i * 8)) & 0xFF;
-    }
-}
-
-uint16_t wordToDecimal(const uint16_t* buffer) {
-    uint8_t highByte = buffer[1];
-    uint8_t lowByte = buffer[2];
-
-    uint16_t decimal = ((uint16_t)highByte << 8) | lowByte;
-
-    return decimal;
-}
-
-uint32_t bytesToInt32(const uint8_t* buffer) {
-    uint32_t result = 0;
-
-    for (int i = 24; i > 0; i--) {
-        result |= ((uint32_t)buffer[i]) << (8 * (23 - i));
-    }
-
-    return result;
-}
-
-//Maps 5 bit linear exponent to LSB value (2^(twos complement of index))
-const float LUT_linear_exponents[32] = {
-1.0,2.0,4.0,8.0,16.0,32.0,64.0,128.0,256.0,512.0,1024.0,2048.0,4096.0,8192.0,
-16384.0,32768.0,0.0000152587890625,0.000030517578125,0.00006103515625,
-0.0001220703125,0.000244140625,0.00048828125,0.0009765625,0.001953125,0.00390625,
-0.0078125,0.015625,0.03125,0.0625,0.125,0.25,0.5
-};
-
-unsigned int float_to_slinear11(float number, signed int exponent)
-{
-	signed int mantissa;
-	float lsb;
-	//Decode the exponent and generate twos complement form
-	if(exponent < 0) {
-		lsb = LUT_linear_exponents[(exponent+32)];
-	} else {
-		lsb = LUT_linear_exponents[exponent];
-	}
-	//Decode mantissa based on exponent and generate twos complement form
-	mantissa = (signed int)(number / lsb);
-	//If numbers are negative, de-sign-extend to 5/11 bit numbers
-	mantissa &= 0x07FF;
-	exponent &= 0x1F;
-
-	return (mantissa | (exponent << 11));
-}
-
-float slinear11_to_float(unsigned int number)
-{
-	unsigned int exponent;
-	int mantissa;
-	float lsb;
-	exponent = number >> 11;
-	mantissa = number & 0x07FF;
-	//Sign extend Mantissa to 32 bits (use your int size here)
-	if (mantissa > 0x03FF) {
-		mantissa |= 0xFFFFF800;
-	}
-	lsb = LUT_linear_exponents[exponent];
-	return ((float)mantissa)*lsb;
-}
-
-unsigned int float_to_ulinear16(float number, unsigned char vout_mode)
-{
-	float lsb;
-	lsb = LUT_linear_exponents[(vout_mode & 0x1F)];
-	return (unsigned int)(number/lsb);
-}
-
-float ulinear16_to_float(unsigned int number, unsigned char vout_mode)
-{
-	float lsb;
-	lsb = LUT_linear_exponents[(vout_mode & 0x1F)];
-	return ((float)number)*lsb;
-}
-//---------------------------------------------------------------------------PMBUS READ/WRITES-------------------------------------------------------------------------//
-
-/* [0x79] Status Word
- *
- * */
-
-//Clear Fault (0x03)
-uint8_t clearfaults(uint8_t devAddress){
-	return (PMBUS_SendByte(devAddress, 0x03));
-}
-
-/* 0x10 Write Protect
- * | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
- * | RW| RW| RW| RW| RW| RW| RW| RW|
- *[0x80] Disables all WRITES except 0x10(WP)
- *[0x40] Disable all WRITES except write [0x10],[0x01],[0x00]
- *[0x20] Disable all WRITES except write [0x10],[0x01],[0x00],[0x02],[0x21]
- *[0x00] Disable Enable all writes
-*/
-
-uint8_t getWriteStatus(uint8_t devAddress, uint8_t* buffer){
-	return PMBUS_ReadByte(devAddress,0x10,buffer);
-}
-
-uint8_t setWriteStatus(uint8_t devAddress, uint8_t data, uint8_t status){
-    // Validate the data
-    if(data != 0x80 && data != 0x40 && data != 0x20 && data != 0x00) {
-        return 0; // Invalid data
-    }
-
-    if(!PMBUS_WriteByte(devAddress, 0x10, data)) {
-                return 0;
-          }
-    return 1; // Success
-}
-
-//Store User Data to NVM //Store Default ALL -  0x11h |Store User All - 0x15
-uint8_t saveToNVM(uint8_t devAddress){
-	if(!(PMBUS_SendByte(devAddress, 0x11)))//Try CMD 0x11 (STORE_DEFAULT_ALL)
-	{
-		return PMBUS_SendByte(devAddress, 0x15);//Try CMD 0x11 (STORE_USER_ALL)
-	}
-	return 1;
-}
-
-uint8_t restoreDevice(uint8_t devAddress, uint8_t status){
-
-	uint8_t buf[10];
-	uint8_t PSW_Status;
-	if(!getOpStatus(devAddress, buf))return 0;
-
-	PSW_Status = buf[0];
-
-	if(!status && !((PSW_Status & 0x80))){
-		if(!PMBUS_SendByte(devAddress, 0x12)){
-			return PMBUS_SendByte(devAddress, 0x16);
-		}
-	}
-	return 1;
-}
-
-uint8_t readDeviceID(uint8_t devAddress, uint8_t* buffer )
-{
-    uint8_t count;
-
-    // Perform a Block Read transaction
-    if (!PMBUS_BlockRead(devAddress, 0xAD, buffer, &count))return 0;  // Read failed
-
-    // Check if the count is valid
-    if (count == 0 || count > 32) return 0;  // Invalid count
-    return 1;  // Read successful
-}
-/*| 7  | 6  | 5  | 4  | 3  | 2  | 1  | 0  |
- *| RW | RW | RW | RW | RW | RW | RW | RW |
- *|           PMBUS_REV (0x98)            |
- **/
-uint8_t PMBUSRev(uint8_t devAddress, uint8_t* buffer)
-{
-    // Perform a Read Byte transaction
-    if (!PMBUS_ReadByte(devAddress, 0x98, buffer)) return 0;  // Read failed
-
-    // Extract Part 1 (bits 7:4) and Part 2 (bits 3:0)
-    buffer[1] = (*buffer >> 4) & 0x0F;  // Part 1
-    buffer[2] = *buffer & 0x0F;         // Part 2
-
-    return 1;  // Read successful
-}
-
-uint8_t getCap(uint8_t devAddress, uint8_t* buffer)
-{
-	// Perform a Read Byte transaction
-	  if (!PMBUS_ReadByte(devAddress, 0x19, buffer)) return 0;  // Read failed
-	  return 1;
-}
-
-uint8_t setMfrId(uint8_t devAddress, uint8_t *data, uint8_t len)
-{
-	if(!PMBUS_BlockWrite(devAddress, 0x99, data, len)) return 0;
-	return 1;
-}
-
-uint8_t getMfrId(uint8_t devAddress, uint8_t* buffer)
-{
-	uint8_t len;
-	if(!PMBUS_BlockRead(devAddress, 0x99, buffer, &len))return 0;
-	// Check if the count is valid
-	if (len == 0 || len > 32) return 0;  // Invalid length
-	return 1;
-}
-
-uint8_t setBoardRev(uint8_t devAddress, uint8_t *data, uint8_t len)
-{
-	if(!PMBUS_BlockWrite(devAddress, 0x9B, data, len)) return 0;
-
-	return 1;
-}
-
-uint8_t getBoardRev(uint8_t devAddress, uint8_t* buffer)
-{
-	uint8_t len;
-	if(!PMBUS_BlockRead(devAddress, 0x9B, buffer, &len))return 0;
-	// Check if the length is valid
-	if (len == 0 || len > 32) return 0;  // Invalid length
-	return 1;
-}
-
-/*| 7  | 6  | 5  | 4  | 3  | 2  | 1  | 0  |
- *| RW | RW | RW | RW | RW | RW | RW | RW |
- *|            	PAGE (0x00)             |
- **/
-uint8_t getPage(uint8_t devAddress, uint8_t* buffer)
-{
-	if(!PMBUS_ReadByte(devAddress, 0x00, buffer)) return 0;
-	return 1;
-}
-
-uint8_t setPage(uint8_t devAddress, uint8_t data)
-{
-	if(!PMBUS_WriteByte(devAddress, 0x00, data)) return 0;
-	return 1;
-}
-
-/*| 7  | 6  | 5  | 4  | 3  | 2  | 1  | 0  |
- *| RW | RW | RW | RW | RW | RW | RW | RW |
- *|            	PHASE (0x04)            |
- **/
-uint8_t getPhase(uint8_t devAddress, uint8_t* buffer)
-{
-	if(!PMBUS_ReadByte(devAddress, 0x04, buffer)) return 0;
-	return 1;
-}
-
-uint8_t setPhase(uint8_t devAddress, uint8_t data)
-{
-	if(!PMBUS_WriteByte(devAddress, 0x04, data)) return 0;
-	return 1;
-}
-
-/* Operation (0x01)
-* Bits: | 7  |  6  |  5 |  4 |  3 | 2  | 1 | 0 |
-*       | RW |  R  | RW | RW | RW | RW | R | R |
-*       | ON |  0  | 	  MARGIN 	   | 0 | 0 |
-**/
-uint8_t getOpStatus(uint8_t devAddress, uint8_t* buffer)
-{
-	if(!PMBUS_ReadByte(devAddress, 0x01, buffer)) return 0;
-	return 1;
-}
-
-uint8_t setOpstatus(uint8_t devAddress, uint8_t data)
-{
-	if(!PMBUS_WriteByte(devAddress, 0x01, data)) return 0;
-	return 1;
-}
-
-/* On/Off Config (0x02)
-* Bits: | 7  |  6  |  5 |  4 |   3  | 2  |  1  | 0  |
-*       | RW |  R  | RW | RW |  RW  | RW |  R  | R  |
-*       | ON |  0  |  0 | PU |  CMD | CP |  PL | SP |
-**/
-uint8_t getOnOffConfig(uint8_t devAddress, uint8_t* buffer)
-{
-	if(!PMBUS_ReadByte(devAddress, 0x02, buffer)) return 0;
-	return 1;
-}
-
-uint8_t setOnOffConfig(uint8_t devAddress, uint8_t data)
-{
-	if(!PMBUS_WriteByte(devAddress, 0x02, data)) return 0;
-	return 1;
-}

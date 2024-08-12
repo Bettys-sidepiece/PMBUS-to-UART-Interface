@@ -8,6 +8,8 @@
 #ifndef INC_SYSUTIL_H_
 #define INC_SYSUTIL_H_
 
+#include "pmbusdevice.h"
+#include "pmbuscmd.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,7 +18,6 @@
 #include "CMSIS_RTOS_V2/cmsis_os2.h"
 #include "FreeRTOS/include/task.h"
 #include "smbus.h"
-#include "pmbus_device.h"
 
 #define sysclk 170000000U//Hz
 #define RTOS_PER 1 //ms
@@ -24,13 +25,15 @@
 #define UART_BUFFER_SIZE 256
 #define CMD_QUEUE_SIZE 10
 #define LOG_QUEUE_SIZE 20
-#define MAX_LOG_MESSAGE 128
+#define MAX_LOG_MESSAGE 256
+#define MAX_RESPONSE 1024
 #define MAX_TASKS 5
 
 #define MAX_HARDWARE_INFO_LENGTH 256
 #define BOOTLOADER_START_ADDRESS 0x08000000  // Adjust this based on memory map
 
-#define OS_VERSION  "0.1.0"
+#define OS_VERSION  "1.1.0"
+#define FIRMWARE_VER "1.1.0"
 
 //Enums
 typedef enum{
@@ -45,6 +48,17 @@ typedef enum{
 	SYSTEM_CMD,
 	CONFIG_CMD
 }CmdType;
+
+typedef enum {
+    UART_BAUD_9600 = 0,
+    UART_BAUD_19200,
+    UART_BAUD_38400,
+    UART_BAUD_57600,
+    UART_BAUD_115200,
+    UART_BAUD_230400,
+    UART_BAUD_460800,
+    UART_BAUD_921600
+} UartBaudRate;
 
 typedef enum {
 	LOG_DEBUG=-1,
@@ -69,6 +83,7 @@ typedef enum {
 
 typedef enum {
 	SYS_GET_OS_VERSION,
+	SYS_SCAN_ACTIVE_ADDR,
 	SYS_UPDATE_FIRMWARE,
 	SYS_RESET,
 	SYS_GET_UPTIME,
@@ -87,6 +102,8 @@ typedef enum {
 	CONF_GET_PMBUS_FREQUENCY,
 	CONF_ENABLE_LOGGING,
 	CONF_DISABLE_LOGGING,
+	CONF_ENABLE_DEV_MONITOR,
+	CONF_DISABLE_DEV_MONITOR,
 	CONF_RESET_TO_DEFAULT,
 } ConfigCmd;
 
@@ -95,6 +112,7 @@ typedef struct {
 	uint8_t type;
 	uint8_t data[UART_BUFFER_SIZE];
 	uint16_t cmd;
+	uint8_t pmbus_rw;
 	uint16_t length;
 } Command_t;
 
@@ -124,6 +142,7 @@ extern uint8_t log_verbosity;
 
 extern I2C_HandleTypeDef hi2c1;
 extern UART_HandleTypeDef hlpuart1;
+extern pmbus_device_t pdevice;
 
 extern osThreadId_t supervisorTaskHandle;
 extern osThreadId_t uartTaskHandle;
@@ -149,6 +168,7 @@ extern osTimerId_t recoveryTimer;
 extern uint8_t rxbuffer[UART_BUFFER_SIZE];
 extern uint16_t rx_index;
 extern char syscheck[MAX_LOG_MESSAGE];
+extern const CommandHandler commandHandlers[];
 
 extern void (*taskFunctions[MAX_TASKS])(void *);
 
@@ -224,7 +244,7 @@ void HandleVoutMax(Command_t *cmd);
 void HandleVoutMarginHigh(Command_t *cmd);
 void HandleVoutMarginLow(Command_t *cmd);
 void HandleVoutTransitionRate(Command_t *cmd);
-void HandleVoutDrop(Command_t *cmd);
+void HandleVoutDroop(Command_t *cmd);
 void HandleVoutScaleLoop(Command_t *cmd);
 void HandleVoutScaleMonitor(Command_t *cmd);
 void HandleVoutMin(Command_t *cmd);

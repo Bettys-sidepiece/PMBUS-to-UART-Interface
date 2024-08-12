@@ -5,8 +5,8 @@
  *      Author: nx024656
  */
 
-#ifndef INC_PMBUS_DEVICE_H_
-#define INC_PMBUS_DEVICE_H_
+#ifndef INC_PMBUSDEVICE_H_
+#define INC_PMBUSDEVICE_H_
 
 
 #include <stdlib.h>
@@ -25,7 +25,7 @@ typedef struct{
 } pdevice_cap_t;
 
 typedef struct {
-	uint8_t address;
+	uint16_t address;
 	uint32_t pmbus_rev[2];
 	uint32_t deviceID;
 	uint32_t vendor;
@@ -36,10 +36,8 @@ typedef struct {
 	uint8_t WP_Status;
 } pmbus_device_t;
 
-
-
 void resetPMBUSdevice(pmbus_device_t *pdev);
 int deviceCapabilities(pmbus_device_t *pdev);
 int scanPMBUSwire(pmbus_device_t *pdev);
 
-#endif /* INC_PMBUS_DEVICE_H_ */
+#endif /* INC_PMBUSDEVICE_H_ */

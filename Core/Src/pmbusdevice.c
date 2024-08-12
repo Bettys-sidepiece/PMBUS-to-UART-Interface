@@ -1,7 +1,7 @@
 /*
  * pmbus_device.c
  */
-#include "pmbus_device.h"
+#include <pmbusdevice.h>
 
 int pdevInit(pmbus_device_t *pdev)
 {
@@ -56,7 +56,7 @@ int deviceCapabilities(pmbus_device_t *pdev) {
 
 int scanPMBUSwire(pmbus_device_t *pdev)
 {
-    for (uint8_t addr = 0xD0; addr <= 0xFf; addr++) {
+    for (uint8_t addr = 0xB0; addr <= 0xEE; addr++) {
 	    // Scan addresses from 0xC0 to 0xFE
         if (readDeviceID(addr, pdev->rxBuf)) {
             pdev->address = addr;

@@ -46,8 +46,9 @@ int main(void)
 
     /* Initialize CMSIS-RTOS2 */
     osKernelInitialize();
-    /* Start the scheduler */
     initRTOS();
+    /* Start the scheduler */
+
     osKernelStart();
 
     /* We should never get here as control is now taken by the scheduler */
@@ -242,15 +243,40 @@ void UartTask(void *argument) {
                     snprintf(syscheck, sizeof(syscheck), "Command: %d", cmd.cmd);
                     logMessage(LOG_DEBUG, syscheck);
 
-                    // Convert data from ASCII to integers
-                    cmd.length = 0;
-                    for (int i = 4; i < rx_index; i++) {
-			  if (rxbuffer[i] >= '0' && rxbuffer[i] <= '9') {
-			  cmd.data[cmd.length++] = rxbuffer[i] - '0';
-			  } else {
-				 logMessage(LOG_WARNING, "Invalid ASCII data");
-				 break;
-			 	 }
+                    //Parse PMBUS data
+                    if(!cmd.type){
+				  cmd.pmbus_rw = (rxbuffer[4] - '0');
+				  char ch;
+				  //parse the pmbus w/r bit
+				  if(cmd.pmbus_rw >= 0 && cmd.pmbus_rw <= 1){
+					ch = cmd.pmbus_rw && 1? 'W' : 'R';
+					snprintf(syscheck, sizeof(syscheck),"PMBUS W/R bit : %c", ch);
+					logMessage(LOG_DEBUG,syscheck);
+				  }else{
+					logMessage(LOG_WARNING,"Invalid PMBUS W/R bit");
+				  }
+
+				  // Convert data from ASCII to integers
+				  cmd.length = 0;
+				  for (int i = 5; i < rx_index; i++) {
+				  if (rxbuffer[i] >= '0' && rxbuffer[i] <= '9') {
+				  cmd.data[cmd.length++] = rxbuffer[i] - '0';
+				  } else {
+					 logMessage(LOG_WARNING, "Invalid ASCII data");
+					 break;
+					 }
+				  }
+                    }else{
+                  	  // Convert data from ASCII to integers
+				  cmd.length = 0;
+				  for (int i = 4; i < rx_index; i++) {
+				  if (rxbuffer[i] >= '0' && rxbuffer[i] <= '9') {
+				  cmd.data[cmd.length++] = rxbuffer[i] - '0';
+				  } else {
+					 logMessage(LOG_WARNING, "Invalid ASCII data");
+					 break;
+					 }
+				  }
                     }
 
                     snprintf(syscheck, sizeof(syscheck), "Data length: %d", cmd.length);
@@ -290,7 +316,7 @@ void PmbusTask(void *argument)
 	  if(osMutexAcquire(pmbusMutex, 1000) == osOK)
 	  {
 		/* Perform PMBUS operation */
-
+		 // if(device_montior){}
 		/* Release mutex */
 		osMutexRelease(pmbusMutex);
 	  }
@@ -397,7 +423,6 @@ void SupervisorTask(void *argument)
             /* All main tasks are blocked, this might indicate a problem */
             logMessage(LOG_CRITICAL, "All main tasks blocked");
 
-            /* Here you might want to implement a recovery mechanism */
             startIncrementalRecovery();
         }
 
