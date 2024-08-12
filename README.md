@@ -342,18 +342,18 @@ Example:
 | USER_DATA_00 to USER_DATA_12 | 176-188 | Read/Write user data 00 to 12 |
 
 Note: This list includes all the PMBus commands implemented in this system. Some commands may have specific data formats or restrictions. Always refer to the PMBus specification and your device's datasheet for detailed information on how to use each command.
-
+```markdown
 ```marmaid
 graph TD
-%% System Initialization
-A[Start System] --> B[Initialize Hardware]
-B --> C[Initialize RTOS]
-C --> D[Start Tasks]
-D --> E[UART Task]
-D --> F[PMBus Task]
-D --> G[Command Processing Task]
-D --> H[Log Task]
-D --> I[Supervisor Task]
+    %% System Initialization
+    A[Start System] --> B[Initialize Hardware]
+    B --> C[Initialize RTOS]
+    C --> D[Start Tasks]
+    D --> E[UART Task]
+    D --> F[PMBus Task]
+    D --> G[Command Processing Task]
+    D --> H[Log Task]
+    D --> I[Supervisor Task]
 
     %% Command Processing Flow
     E --> J[Receive Command]
@@ -429,6 +429,7 @@ D --> I[Supervisor Task]
 
     classDef emphasisBox fill:#f9f,stroke:#333,stroke-width:4px;
     class R,U,V,W,X,Y emphasisBox; 
+```
 ```
 
 Some functions are not fully implemented in the provided code and may need to be completed based on specific hardware and system requirements.
