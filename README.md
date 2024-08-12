@@ -343,6 +343,7 @@ Example:
 
 Note: This list includes all the PMBus commands implemented in this system. Some commands may have specific data formats or restrictions. Always refer to the PMBus specification and your device's datasheet for detailed information on how to use each command.
 
+```marmaid
 graph TD
 %% System Initialization
 A[Start System] --> B[Initialize Hardware]
@@ -427,7 +428,8 @@ D --> I[Supervisor Task]
     style AD fill:#DDA0DD,stroke:#333,stroke-width:2px
 
     classDef emphasisBox fill:#f9f,stroke:#333,stroke-width:4px;
-    class R,U,V,W,X,Y emphasisBox;
-=======
+    class R,U,V,W,X,Y emphasisBox; 
+```
+
 Some functions are not fully implemented in the provided code and may need to be completed based on specific hardware and system requirements.
 
