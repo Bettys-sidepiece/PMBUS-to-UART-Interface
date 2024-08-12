@@ -4,10 +4,11 @@
 
 1. [Introduction](#introduction)
 2. [Command Structure](#command-structure)
-3. [PMBus Commands](#pmbus-commands)
 4. [System Commands](#system-commands)
 5. [Configuration Commands](#configuration-commands)
 6. [Error Handling](#error-handling)
+7. [PMBus Commands Documentation](#pmbus-commands-documentation)
+8. [System Diagram](#system-diagram)
 
 ## Introduction
 
@@ -64,6 +65,7 @@ Where:
 Example: 20021\n
 
 This sets the log verbosity to NORMAL.
+<<<<<<< HEAD
 
 ## PMBus Commands
 
@@ -96,6 +98,8 @@ Example usage:
 
 - Read VOUT_COMMAND: `00330\n`
 - Write VOUT_COMMAND (set to 1.0V): `003311000\n`
+=======
+>>>>>>> bf1c9047053dd505532c84244cac6cdad5558b2d
 
 ## System Commands
 
@@ -343,6 +347,11 @@ Example:
 
 Note: This list includes all the PMBus commands implemented in this system. Some commands may have specific data formats or restrictions. Always refer to the PMBus specification and your device's datasheet for detailed information on how to use each command.
 
+<<<<<<< HEAD
+=======
+## System Diagram
+
+>>>>>>> bf1c9047053dd505532c84244cac6cdad5558b2d
 ```mermaid
 graph TD
     A[Start System] --> B[Initialize Hardware]
