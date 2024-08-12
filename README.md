@@ -4,10 +4,11 @@
 
 1. [Introduction](#introduction)
 2. [Command Structure](#command-structure)
-3. [PMBus Commands](#pmbus-commands)
 4. [System Commands](#system-commands)
 5. [Configuration Commands](#configuration-commands)
 6. [Error Handling](#error-handling)
+7. [PMBus Commands Documentation](#pmbus-commands-documentation)
+8. [System Diagram](#system-diagram)
 
 ## Introduction
 
@@ -64,38 +65,6 @@ Where:
 Example: 20021\n
 
 This sets the log verbosity to NORMAL.
-
-## PMBus Commands
-
-PMBus commands interact directly with the PMBus device. They include an additional bit for read/write operations.
-
-Format: `[0][CMD][R/W][DATA][\n]`
-
-- `[R/W]`: `0` for read, `1` for write
-- `[DATA]`: Hexadecimal data for write operations (omitted for read operations)
-
-### Available PMBus Commands
-
-| Command             | Code | Description                        |
-| ------------------- | ---- | ---------------------------------- |
-| PAGE                | 000  | Set/Get the current page           |
-| OPERATION           | 001  | Set/Get the operation state        |
-| ON_OFF_CONFIG       | 002  | Set/Get the on/off configuration   |
-| CLEAR_FAULT         | 003  | Clear all faults                   |
-| PHASE               | 004  | Set/Get the current phase          |
-| WRITE_PROTECT       | 010  | Set/Get write protection status    |
-| STORE_DEFAULT_ALL   | 011  | Store current settings as defaults |
-| RESTORE_DEFAULT_ALL | 012  | Restore default settings           |
-| CAPABILITY          | 025  | Get device capabilities            |
-| VOUT_MODE           | 031  | Get the VOUT mode                  |
-| VOUT_COMMAND        | 033  | Set/Get the output voltage         |
-
-(Note: This list is not exhaustive. Refer to the PMBus specification for a complete list of commands.)
-
-Example usage:
-
-- Read VOUT_COMMAND: `00330\n`
-- Write VOUT_COMMAND (set to 1.0V): `003311000\n`
 
 ## System Commands
 
@@ -342,6 +311,8 @@ Example:
 | USER_DATA_00 to USER_DATA_12 | 176-188 | Read/Write user data 00 to 12 |
 
 Note: This list includes all the PMBus commands implemented in this system. Some commands may have specific data formats or restrictions. Always refer to the PMBus specification and your device's datasheet for detailed information on how to use each command.
+
+## System Diagram
 
 ```mermaid
 graph TD
