@@ -21,7 +21,6 @@ All commands follow this general structure:
 [TYPE][CMD][DATA]\n
 ```
 
-<<<<<<< HEAD
 - `[TYPE]`: Single digit representing the command type
   - `0`: PMBus command
   - `1`: System command
@@ -29,7 +28,7 @@ All commands follow this general structure:
 - `[CMD]`: Three-digit command code
 - `[DATA]`: Optional data (format depends on the command)
 - `\n`: Newline character (required to end the command)
-=======
+
 ## Configuration Commands
 
 - `CONF_SET_ADDRESS` (000): Set PMBus address
@@ -64,7 +63,6 @@ Where:
 Example: 20021\n
 
 This sets the log verbosity to NORMAL.
->>>>>>> refs/remotes/origin/Master
 
 ## PMBus Commands
 
@@ -72,7 +70,7 @@ PMBus commands interact directly with the PMBus device. They include an addition
 
 Format: `[0][CMD][R/W][DATA][\n]`
 
-<<<<<<< HEAD
+
 - `[R/W]`: `0` for read, `1` for write
 - `[DATA]`: Hexadecimal data for write operations (omitted for read operations)
 
@@ -432,4 +430,4 @@ D --> I[Supervisor Task]
     class R,U,V,W,X,Y emphasisBox;
 =======
 Some functions are not fully implemented in the provided code and may need to be completed based on specific hardware and system requirements.
->>>>>>> refs/remotes/origin/Master
+
