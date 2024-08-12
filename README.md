@@ -343,19 +343,17 @@ Example:
 
 Note: This list includes all the PMBus commands implemented in this system. Some commands may have specific data formats or restrictions. Always refer to the PMBus specification and your device's datasheet for detailed information on how to use each command.
 
-```marmaid
+```mermaid
 graph TD
-    %% System Initialization
     A[Start System] --> B[Initialize Hardware]
     B --> C[Initialize RTOS]
     C --> D[Start Tasks]
     D --> E[UART Task]
-    D --> F[PMBus Task]
-    D --> G[Command Processing Task]
-    D --> H[Log Task]
+    D ---> F[PMBus Task]
+    D ---> G[Command Processing Task]
+    D ---> H[Log Task]
     D --> I[Supervisor Task]
 
-    %% Command Processing Flow
     E --> J[Receive Command]
     J --> K{Parse Command}
     K -->|PMBus| L[Queue PMBus Command]
@@ -363,7 +361,6 @@ graph TD
     K -->|Config| N[Queue Config Command]
     K -->|Invalid| O[Log Error]
 
-    %% Command Execution
     L --> P[Command Processing Task]
     M --> P
     N --> P
@@ -373,7 +370,6 @@ graph TD
     Q -->|System| S[Execute System Command]
     Q -->|Config| T[Execute Config Command]
 
-    %% PMBus Communication Subgraph
     subgraph PMBus Communication
         R --> U{Read/Write}
         U -->|Read| V[Read from PMBus Device]
@@ -381,25 +377,20 @@ graph TD
         V --> X[Format PMBus Response]
         W --> X
         X --> Y[Calculate PEC]
-        Y --> Z[Release PMBus Mutex]
     end
 
-    %% Logging and Response
+    Y --> Z[Release PMBus Mutex]
     Z --> AA[Log Result]
     S --> AA
     T --> AA
     AA --> AB[Send Response]
-    AB --> J[Wait for Next Command]
 
-    %% Supervisor Task
-    I --> AC[Monitor System Health]
-    AC --> AD[Manage Recovery]
+    I ---> AC[Monitor System Health]
+    I ---> AD[Manage Recovery]
 
-    %% Styles
     style A fill:#98FB98,stroke:#333,stroke-width:2px
     style B fill:#98FB98,stroke:#333,stroke-width:2px
     style C fill:#98FB98,stroke:#333,stroke-width:2px
-    style D fill:#98FB98,stroke:#333,stroke-width:2px
     style E fill:#DDA0DD,stroke:#333,stroke-width:2px
     style F fill:#DDA0DD,stroke:#333,stroke-width:2px
     style G fill:#DDA0DD,stroke:#333,stroke-width:2px
@@ -424,9 +415,7 @@ graph TD
     style Z fill:#FFD700,stroke:#333,stroke-width:2px
     style AA fill:#87CEFA,stroke:#333,stroke-width:2px
     style AB fill:#98FB98,stroke:#333,stroke-width:2px
-    style AC fill:#DDA0DD,stroke:#333,stroke-width:2px
-    style AD fill:#DDA0DD,stroke:#333,stroke-width:2px
-
+    
     classDef emphasisBox fill:#f9f,stroke:#333,stroke-width:4px;
     class R,U,V,W,X,Y emphasisBox; 
 ```
