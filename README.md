@@ -21,7 +21,6 @@ All commands follow this general structure:
 [TYPE][CMD][DATA]\n
 ```
 
-<<<<<<< HEAD
 - `[TYPE]`: Single digit representing the command type
   - `0`: PMBus command
   - `1`: System command
@@ -29,7 +28,7 @@ All commands follow this general structure:
 - `[CMD]`: Three-digit command code
 - `[DATA]`: Optional data (format depends on the command)
 - `\n`: Newline character (required to end the command)
-=======
+
 ## Configuration Commands
 
 - `CONF_SET_ADDRESS` (000): Set PMBus address
@@ -56,6 +55,7 @@ Send commands via UART in the following format:
 `<command_type>` `<command_code>` `<data>` `<\n>`
 
 Where:
+
 - `<command_type>` is 0 for PMBus, 1 for System, 2 for Config
 - `<command_code>` is a three-digit number
 - `<data>` is optional and command-specific
@@ -64,7 +64,6 @@ Where:
 Example: 20021\n
 
 This sets the log verbosity to NORMAL.
->>>>>>> refs/remotes/origin/Master
 
 ## PMBus Commands
 
@@ -72,7 +71,6 @@ PMBus commands interact directly with the PMBus device. They include an addition
 
 Format: `[0][CMD][R/W][DATA][\n]`
 
-<<<<<<< HEAD
 - `[R/W]`: `0` for read, `1` for write
 - `[DATA]`: Hexadecimal data for write operations (omitted for read operations)
 
@@ -345,18 +343,17 @@ Example:
 
 Note: This list includes all the PMBus commands implemented in this system. Some commands may have specific data formats or restrictions. Always refer to the PMBus specification and your device's datasheet for detailed information on how to use each command.
 
+```mermaid
 graph TD
-%% System Initialization
-A[Start System] --> B[Initialize Hardware]
-B --> C[Initialize RTOS]
-C --> D[Start Tasks]
-D --> E[UART Task]
-D --> F[PMBus Task]
-D --> G[Command Processing Task]
-D --> H[Log Task]
-D --> I[Supervisor Task]
+    A[Start System] --> B[Initialize Hardware]
+    B --> C[Initialize RTOS]
+    C --> D[Start Tasks]
+    D --> E[UART Task]
+    D ---> F[PMBus Task]
+    D ---> G[Command Processing Task]
+    D ---> H[Log Task]
+    D --> I[Supervisor Task]
 
-    %% Command Processing Flow
     E --> J[Receive Command]
     J --> K{Parse Command}
     K -->|PMBus| L[Queue PMBus Command]
@@ -364,43 +361,37 @@ D --> I[Supervisor Task]
     K -->|Config| N[Queue Config Command]
     K -->|Invalid| O[Log Error]
 
-    %% Command Execution
     L --> P[Command Processing Task]
     M --> P
     N --> P
 
     P --> Q{Command Type}
-    Q -->|PMBus| R[Acquire PMBus Mutex]
+    Q --->|PMBus| R[Acquire PMBus Mutex]
     Q -->|System| S[Execute System Command]
     Q -->|Config| T[Execute Config Command]
 
-    %% PMBus Communication Subgraph
     subgraph PMBus Communication
-        R --> U{Read/Write}
+        R ---> U{Read/Write}
         U -->|Read| V[Read from PMBus Device]
         U -->|Write| W[Write to PMBus Device]
         V --> X[Format PMBus Response]
         W --> X
         X --> Y[Calculate PEC]
-        Y --> Z[Release PMBus Mutex]
     end
 
-    %% Logging and Response
-    Z --> AA[Log Result]
-    S --> AA
-    T --> AA
+    Y --> Z[Release PMBus Mutex]
+    Z --> AO[Log Task]
+    S --> AO
+    T --> AO
+    AO--> AA[Log Result]
     AA --> AB[Send Response]
-    AB --> J[Wait for Next Command]
 
-    %% Supervisor Task
-    I --> AC[Monitor System Health]
-    AC --> AD[Manage Recovery]
+    I ---> AC[Monitor System Health]
+    I ---> AD[Manage Recovery]
 
-    %% Styles
     style A fill:#98FB98,stroke:#333,stroke-width:2px
     style B fill:#98FB98,stroke:#333,stroke-width:2px
     style C fill:#98FB98,stroke:#333,stroke-width:2px
-    style D fill:#98FB98,stroke:#333,stroke-width:2px
     style E fill:#DDA0DD,stroke:#333,stroke-width:2px
     style F fill:#DDA0DD,stroke:#333,stroke-width:2px
     style G fill:#DDA0DD,stroke:#333,stroke-width:2px
@@ -425,11 +416,8 @@ D --> I[Supervisor Task]
     style Z fill:#FFD700,stroke:#333,stroke-width:2px
     style AA fill:#87CEFA,stroke:#333,stroke-width:2px
     style AB fill:#98FB98,stroke:#333,stroke-width:2px
-    style AC fill:#DDA0DD,stroke:#333,stroke-width:2px
-    style AD fill:#DDA0DD,stroke:#333,stroke-width:2px
+    style AO fill:#DDA0DD,stroke:#333,stroke-width:
 
     classDef emphasisBox fill:#f9f,stroke:#333,stroke-width:4px;
     class R,U,V,W,X,Y emphasisBox;
-=======
-Some functions are not fully implemented in the provided code and may need to be completed based on specific hardware and system requirements.
->>>>>>> refs/remotes/origin/Master
+```
