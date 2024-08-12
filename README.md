@@ -55,6 +55,7 @@ Send commands via UART in the following format:
 `<command_type>` `<command_code>` `<data>` `<\n>`
 
 Where:
+
 - `<command_type>` is 0 for PMBus, 1 for System, 2 for Config
 - `<command_code>` is a three-digit number
 - `<data>` is optional and command-specific
@@ -69,7 +70,6 @@ This sets the log verbosity to NORMAL.
 PMBus commands interact directly with the PMBus device. They include an additional bit for read/write operations.
 
 Format: `[0][CMD][R/W][DATA][\n]`
-
 
 - `[R/W]`: `0` for read, `1` for write
 - `[DATA]`: Hexadecimal data for write operations (omitted for read operations)
@@ -366,12 +366,12 @@ graph TD
     N --> P
 
     P --> Q{Command Type}
-    Q -->|PMBus| R[Acquire PMBus Mutex]
+    Q --->|PMBus| R[Acquire PMBus Mutex]
     Q -->|System| S[Execute System Command]
     Q -->|Config| T[Execute Config Command]
 
     subgraph PMBus Communication
-        R --> U{Read/Write}
+        R ---> U{Read/Write}
         U -->|Read| V[Read from PMBus Device]
         U -->|Write| W[Write to PMBus Device]
         V --> X[Format PMBus Response]
@@ -380,9 +380,10 @@ graph TD
     end
 
     Y --> Z[Release PMBus Mutex]
-    Z --> AA[Log Result]
-    S --> AA
-    T --> AA
+    Z --> AO[Log Task]
+    S --> AO
+    T --> AO
+    AO--> AA[Log Result]
     AA --> AB[Send Response]
 
     I ---> AC[Monitor System Health]
@@ -415,10 +416,8 @@ graph TD
     style Z fill:#FFD700,stroke:#333,stroke-width:2px
     style AA fill:#87CEFA,stroke:#333,stroke-width:2px
     style AB fill:#98FB98,stroke:#333,stroke-width:2px
-    
+    style AO fill:#DDA0DD,stroke:#333,stroke-width:
+
     classDef emphasisBox fill:#f9f,stroke:#333,stroke-width:4px;
-    class R,U,V,W,X,Y emphasisBox; 
+    class R,U,V,W,X,Y emphasisBox;
 ```
-
-Some functions are not fully implemented in the provided code and may need to be completed based on specific hardware and system requirements.
-
