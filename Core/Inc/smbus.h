@@ -49,6 +49,17 @@ typedef enum{
 	FAST_PLUS_MODE_2
 }i2c_freq_t;
 
+//TODO--Implement proper error handling for PMBUS transactions. To figure out why reads arent working
+typedef enum{
+	PMBUS_PEC_MISMATCH,
+	PMBUS_OK,
+	PMBUS_NACK,
+	PMBUS_TIME_OUT,
+	PMBUS_INVALID_ENTRY,
+	PMBUS_WRITE_OVER_FLOW,
+	PMBUS_RX_ERROR,
+}i2c_error_t;
+
 
 // Basic I2C operations
 uint8_t setI2cFreq(i2c_freq_t freq_mode);

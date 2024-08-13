@@ -178,7 +178,7 @@ uint8_t CRC8(const uint8_t* data, uint32_t length)
 uint8_t PMBUS_SendByte(uint8_t devAddress, uint8_t data) {
     uint32_t timeout;
     uint8_t buffer[3];
-    uint8_t pec;
+    volatile uint8_t pec;
 
     // Prepare buffer for PEC calculation
     buffer[0] = devAddress << 1;  // Address with write bit
@@ -240,7 +240,7 @@ uint8_t PMBUS_SendByte(uint8_t devAddress, uint8_t data) {
 uint8_t PMBUS_WriteByte(uint8_t devAddress, uint8_t command, uint8_t data) {
     uint32_t timeout;
     uint8_t buffer[3];
-    uint8_t pec;
+    volatile uint8_t pec;
 
     // Prepare buffer for PEC calculation
     buffer[0] = devAddress << 1;  // Write operation (address + write bit)
@@ -307,8 +307,9 @@ uint8_t PMBUS_WriteByte(uint8_t devAddress, uint8_t command, uint8_t data) {
  */
 uint8_t PMBUS_ReadByte(uint8_t devAddress, uint8_t command, uint8_t *data) {
     uint32_t timeout;
-    uint8_t buffer[3];
-    uint8_t pec_received, pec_calculated;
+    uint8_t buffer[4];
+    uint8_t pec_received;
+    uint8_t pec_calculated;
 
     // Ensure STOPF is cleared by writing to the ICR register
     I2C1->ICR |= I2C_ICR_STOPCF;
@@ -373,7 +374,7 @@ uint8_t PMBUS_ReadByte(uint8_t devAddress, uint8_t command, uint8_t *data) {
 uint8_t PMBUS_WriteWord(uint8_t devAddress, uint8_t command, uint16_t data) {
     uint32_t timeout;
     uint8_t buffer[4];
-    uint8_t pec;
+    volatile uint8_t pec;
 
     // Prepare buffer for PEC calculation
     buffer[0] = devAddress << 1;        // Write operation (address + write bit)
@@ -447,7 +448,7 @@ uint8_t PMBUS_ReadWord(uint8_t devAddress, uint8_t command, uint16_t *data) {
     uint32_t timeout;
     uint8_t buffer[4];
     uint8_t low_byte, high_byte;
-    uint8_t pec_received, pec_calculated;
+    volatile uint8_t pec_received, pec_calculated;
 
     // Ensure STOPF is cleared by writing to the ICR register
     I2C1->ICR |= I2C_ICR_STOPCF;
@@ -519,7 +520,7 @@ uint8_t PMBUS_ReadWord(uint8_t devAddress, uint8_t command, uint16_t *data) {
 uint8_t PMBUS_BlockWrite(uint8_t devAddress, uint8_t command, uint8_t *data, uint8_t length) {
     uint32_t timeout;
     uint8_t buffer[258];  // Maximum length including address, command, byte count, data, and PEC
-    uint8_t pec_calculated;
+    volatile uint8_t pec_calculated;
 
     if (length > 255) return 0;  // PMBus block write limited to 255 bytes
 
@@ -606,7 +607,7 @@ uint8_t PMBUS_BlockRead(uint8_t devAddress, uint8_t command, uint8_t *data, uint
 {
     uint32_t timeout = 10000;
     uint8_t byte_count;
-    uint8_t pec_received, pec_calculated;
+    volatile uint8_t pec_received, pec_calculated;
     uint8_t buffer[258];  // Maximum length including address, command, byte count, data, and PEC
 
     // Ensure STOPF is cleared by writing to the ICR register
@@ -695,7 +696,7 @@ uint8_t PMBUS_BlockWriteBlockRead(uint8_t devAddress, uint8_t command,
     if (write_count > 255 || *read_count > 255) return 0;  // PMBus block limited to 255 bytes
 
     uint8_t buffer[256];
-    uint8_t pec;
+    volatile uint8_t pec;
     uint32_t timeout;
 
     // Ensure the I2C bus is not busy
@@ -765,7 +766,7 @@ uint8_t PMBUS_BlockWriteBlockRead(uint8_t devAddress, uint8_t command,
     // Read PEC
     timeout = 10000;
     while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return 0;
-    uint8_t received_pec = I2C1->RXDR;
+    volatile uint8_t received_pec = I2C1->RXDR;
 
     // Calculate PEC for read operation
     pec = CRC8(buffer, byte_count + 4);

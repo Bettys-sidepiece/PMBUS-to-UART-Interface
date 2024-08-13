@@ -86,6 +86,26 @@ void logMessage(LogLevel level, const char* message)
     }
 }
 
+const char* i2cErrorToString(i2c_error_t error) {
+    switch (error) {
+        case PMBUS_PEC_MISMATCH:     return "PMBUS_PEC_MISMATCH";
+        case PMBUS_OK:               return "PMBUS_OK";
+        case PMBUS_NACK:             return "PMBUS_NACK";
+        case PMBUS_TIME_OUT:          return "PMBUS_TIMEOUT";
+        case PMBUS_INVALID_ENTRY:    return "PMBUS_INVALID_ENTRY";
+        case PMBUS_WRITE_OVER_FLOW:   return "PMBUS_WRITE_OVERFLOW";
+        default:                     return "UNKNOWN_I2C_ERROR";
+    }
+}
+
+void logPmbusError(LogLevel level, i2c_error_t error, const char* context) {
+    char logMessageBuffer[MAX_LOG_MESSAGE];
+
+    snprintf(logMessageBuffer, MAX_LOG_MESSAGE, "PMBus Error in %s: %s", context, i2cErrorToString(error));
+
+    logMessage(level, logMessageBuffer);
+}
+
 
 void stateTimerCallback(void *argument)
 {
@@ -273,7 +293,17 @@ void ProcessSystemCommand(Command_t *cmd)
         case SYS_SCAN_ACTIVE_ADDR:
       	  logMessage(LOG_INFO,"PMBus Address scan started");
       	  scanPMBUSwire(&pdevice);
-      	  snprintf(response,sizeof(response),"PMBus Address found: 0x%02X",(pdevice.address));
+
+      	  if(pdevice.address != 0){
+
+      		  snprintf(response,sizeof(response),"PMBus Address found: 0x%02X",((((pdevice.address) << 1)) & 0xFF) >> 1);
+
+      	  }else{
+
+			  snprintf(response,sizeof(response),"No PMBUS device found");
+
+		  }
+
       	  logMessage(LOG_DEBUG,response);
       	  SendResponse(response);
 		break;
@@ -295,7 +325,7 @@ void ProcessSystemCommand(Command_t *cmd)
             break;
 
         case SYS_GET_CPU_USAGE:
-            SendCPUUsage();
+            SendCPUUsage(); //TODO -  Fix SendCPUUsage reponse. Doesnt send any data to reciever
             break;
 
         case SYS_GET_HARDWARE_INFO:
@@ -443,7 +473,7 @@ void ProcessConfigCommand(Command_t *cmd) {
       		uint16_t temp = (cmd->data[4] << 8)|(cmd->data[5]);
       		if(temp > 0xB0 && temp < 0xF0){
       			pdevice.address = temp;
-      			snprintf(syscheck, sizeof(syscheck),"PMBUS address set to 0x%02X",pdevice.address);
+      			snprintf(syscheck, sizeof(syscheck),"PMBUS address set to 0x%02X",((((pdevice.address << 1) | 0) & 0xFF) >> 1));
       			logMessage(LOG_INFO,syscheck);
       		}else{
       			logMessage(LOG_WARNING,"Address entered is invalid.[Valid address: 0xB0 - 0xF0]");
@@ -455,7 +485,10 @@ void ProcessConfigCommand(Command_t *cmd) {
 
         case CONF_GET_ADDRESS:
       	  if(pdevice.address > 0){
-      		  snprintf(response, sizeof(response),"PMBUS address: 0x%02X",pdevice.address);
+      		  snprintf(response, sizeof(response),"PMBUS address: 0x%02X\nI2C write address: 0x%02X\nI2C read address: 0x%02X",
+      				  ((((pdevice.address << 1) | 0) & 0xFF) >> 1),
+      				  (((pdevice.address << 1) | 1) & 0xFF),
+					  (((pdevice.address << 1) | 0) & 0xFF));
       		  logMessage(LOG_INFO,response);
       	  }else{
       		  logMessage(LOG_WARNING,"No PMBUS address set");
@@ -533,7 +566,7 @@ void ProcessConfigCommand(Command_t *cmd) {
 		snprintf(response, sizeof(response), "Current UART baud rate: %ld\r\n", hlpuart1.Init.BaudRate);
 		logMessage(LOG_INFO, response);
             break;
-
+            //TODO - Fix PMBUS frequency changing
         case CONF_SET_PMBUS_FREQUENCY:
       	if(cmd->length > 0){
       		switch(cmd->data[0]){
