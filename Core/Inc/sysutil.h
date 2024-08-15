@@ -173,8 +173,8 @@ extern const CommandHandler commandHandlers[];
 extern void (*taskFunctions[MAX_TASKS])(void *);
 
 void initPeripherals();
-const char* i2cErrorToString(i2c_error_t error);
-void logPmbusError(LogLevel level, i2c_error_t error, const char* context);
+const char* pmbusErrorToString(pmbus_error_t error);
+void logPmbusError(LogLevel level, pmbus_error_t error, const char* context);
 
 //WDG function prototypes
 void initWatchdog(void);

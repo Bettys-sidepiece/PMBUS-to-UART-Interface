@@ -68,9 +68,10 @@ void setLogVerbosity(LogVerbosity verbose)
 
 void logMessage(LogLevel level, const char* message)
 {
-	// MUTE: only LOG_CRITICAL and LOG_ERROR
+    // MUTE: only LOG_CRITICAL and LOG_ERROR
     // NORMAL: LOG_CRITICAL, LOG_ERROR, and LOG_WARNING
-    // LOUD: all levels (LOG_CRITICAL, LOG_ERROR, LOG_WARNING, LOG_INFO, and LOG_DEBUG)
+    // LOUD: (LOG_CRITICAL, LOG_ERROR, LOG_WARNING, LOG_INFO)
+    // VERBOSE: all levels (LOG_CRITICAL, LOG_ERROR, LOG_WARNING, LOG_INFO, and LOG_DEBUG)
     if ((log_verbosity == MUTE && level >= LOG_ERROR) ||
 	  (log_verbosity == NORMAL && level >= LOG_WARNING) ||
 	  (log_verbosity == LOUD && level >= LOG_INFO )||
@@ -86,24 +87,23 @@ void logMessage(LogLevel level, const char* message)
     }
 }
 
-const char* i2cErrorToString(i2c_error_t error) {
+const char* pmbusErrorToString(pmbus_error_t error) {
     switch (error) {
-        case PMBUS_PEC_MISMATCH:     return "PMBUS_PEC_MISMATCH";
-        case PMBUS_OK:               return "PMBUS_OK";
-        case PMBUS_NACK:             return "PMBUS_NACK";
-        case PMBUS_TIME_OUT:          return "PMBUS_TIMEOUT";
-        case PMBUS_INVALID_ENTRY:    return "PMBUS_INVALID_ENTRY";
-        case PMBUS_WRITE_OVER_FLOW:   return "PMBUS_WRITE_OVERFLOW";
-        default:                     return "UNKNOWN_I2C_ERROR";
+	    case PMBUS_INVALID_DATA:	   return "INVALID_DATA_LENGTH";
+	    case PMBUS_PEC_MISMATCH:     return "PEC_MISMATCH";
+	    case PMBUS_OK:               return "PMBUS_OK";
+	    case PMBUS_NACK:             return "NACK_ERROR";
+	    case PMBUS_TIME_OUT:         return "PMBUS_TIMEOUT";
+	    case PMBUS_INVALID_ENTRY:    return "INVALID_ENTRY";
+	    case PMBUS_WRITE_OVER_FLOW:  return "WRITE_OVERFLOW";
+	    case PMBUS_RX_ERROR:	   return "RXNE_ERROR";
+	    default:                     return "UNKNOWN_I2C_ERROR";
     }
 }
 
-void logPmbusError(LogLevel level, i2c_error_t error, const char* context) {
-    char logMessageBuffer[MAX_LOG_MESSAGE];
-
-    snprintf(logMessageBuffer, MAX_LOG_MESSAGE, "PMBus Error in %s: %s", context, i2cErrorToString(error));
-
-    logMessage(level, logMessageBuffer);
+void logPmbusError(LogLevel level, pmbus_error_t error, const char* context) {
+    snprintf(response, MAX_LOG_MESSAGE, "%s: %s", context , pmbusErrorToString(error));
+    logMessage(level, response);
 }
 
 
@@ -285,21 +285,22 @@ void ProcessPmbusCommand(Command_t *cmd)
 void ProcessSystemCommand(Command_t *cmd)
 {
     SystemCmd sysCmd = (SystemCmd)cmd->cmd;
+    pmbus_error_t res;
     switch(sysCmd) {
         case SYS_GET_OS_VERSION:
             SendOSVersion();
             break;
-
+            //FIXME -- Scan Address is buggy
         case SYS_SCAN_ACTIVE_ADDR:
       	  logMessage(LOG_INFO,"PMBus Address scan started");
-      	  scanPMBUSwire(&pdevice);
-
-      	  if(pdevice.address != 0){
+      	  res = scanPMBUSwire(&pdevice);
+      	  if(res == PMBUS_OK){
 
       		  snprintf(response,sizeof(response),"PMBus Address found: 0x%02X",((((pdevice.address) << 1)) & 0xFF) >> 1);
 
       	  }else{
 
+      		  logPmbusError(LOG_ERROR,res,"PMBUS Address Scan");
 			  snprintf(response,sizeof(response),"No PMBUS device found");
 
 		  }
@@ -325,7 +326,7 @@ void ProcessSystemCommand(Command_t *cmd)
             break;
 
         case SYS_GET_CPU_USAGE:
-            SendCPUUsage(); //TODO -  Fix SendCPUUsage reponse. Doesnt send any data to reciever
+            SendCPUUsage(); //FIXME --  Fix SendCPUUsage reponse. Doesnt send any data to reciever
             break;
 
         case SYS_GET_HARDWARE_INFO:
@@ -548,7 +549,7 @@ void ProcessConfigCommand(Command_t *cmd) {
 				case UART_BAUD_230400: baudRateValue = 230400; break;
 				case UART_BAUD_460800: baudRateValue = 460800; break;
 				case UART_BAUD_921600: baudRateValue = 921600; break;
-				default: baudRateValue = 115200; break; // Default to 115200 if somehow we get here
+				default: baudRateValue = 115200; break;
 			}
 
 			hlpuart1.Init.BaudRate = baudRateValue;
@@ -566,35 +567,60 @@ void ProcessConfigCommand(Command_t *cmd) {
 		snprintf(response, sizeof(response), "Current UART baud rate: %ld\r\n", hlpuart1.Init.BaudRate);
 		logMessage(LOG_INFO, response);
             break;
-            //TODO - Fix PMBUS frequency changing
+            //FIXME - Fix PMBUS frequency changing
         case CONF_SET_PMBUS_FREQUENCY:
       	if(cmd->length > 0){
+
+      		I2C1->CR1 = 0;  // Disable I2C
+      		logMessage(LOG_DEBUG,"I2C Disabled");
+
       		switch(cmd->data[0]){
       			case STD_MODE:
       				setI2cFreq(STD_MODE);
-					logMessage(LOG_INFO, "PMBUS frequency set to 100kHz");
+      				snprintf(response, sizeof(response),"PMBUS set to 100kHz");
+      				break;
       			case FAST_MODE_1 :
       				setI2cFreq(FAST_MODE_1);
-      				logMessage(LOG_INFO,"PMBUS frequency set to 400kHz");
+      				snprintf(response, sizeof(response),"PMBUS set to 400kHz");
+      				break;
       			case FAST_PLUS_MODE_1 :
 					setI2cFreq(FAST_PLUS_MODE_1);
-					logMessage(LOG_INFO,"PMBUS frequency set to 400kHz");
+					snprintf(response, sizeof(response),"PMBUS set to 1000kHz");
+					break;
       			case FAST_MODE_2 :
       				setI2cFreq(FAST_MODE_2);
-					logMessage(LOG_INFO,"PMBUS frequency set to 400kHz");
+      				snprintf(response, sizeof(response),"PMBUS set to 400kHz+");
+      				break;
 				case FAST_PLUS_MODE_2 :
 					setI2cFreq(FAST_PLUS_MODE_2);
-					logMessage(LOG_INFO,"PMBUS frequency set to 400kHz");
+					snprintf(response, sizeof(response),"PMBUS set to 1000kHz+");
+					break;
 				default:
-					logMessage(LOG_WARNING,"Invalid PMBUS frequency\n\t[0]:100Khz\n\t[2]400kHz\n\t[3]1MHz");
+					logMessage(LOG_WARNING,
+					"Invalid PMBUS frequency\n[0] : 100kHz\n[1] : 400kHz\n[2] : 1MHz\n[3] : 400kHz+\n[4] : 1MHz+");
+					break;
       		}
+
+      		logMessage(LOG_INFO,response);
+      		SendResponse(response);
+
+      		I2C1->CR1 |= (0 << 1);  // enable I2C
+      		logMessage(LOG_DEBUG,"I2C Enabled");
       	}
             break;
 
+           //TODO - Make sure this works
         case CONF_GET_PMBUS_FREQUENCY:
       	  char* freq = ( pmbusSpeed == STD_MODE?"100kHz":
       	  pmbusSpeed == FAST_MODE_1?"400kHz": "1000kHz");
-
+      	  switch(pmbusSpeed){
+      		  case STD_MODE: freq = "100kHz"; break;
+      		  case FAST_MODE_1: freq = "400kHz"; break;
+      		  case FAST_PLUS_MODE_1: freq = "1MHz"; break;
+      		  case FAST_MODE_2: freq = "400Khz+"; break;
+      		  case FAST_PLUS_MODE_2: freq = "1MHz+"; break;
+      		  default: freq = "Undefined"; break;
+      	  }
       	  snprintf(response, sizeof(response), "Current PMBUS frequency: %s\r\n", freq);
       	  logMessage(LOG_INFO, response);
       	  break;

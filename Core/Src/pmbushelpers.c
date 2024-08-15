@@ -151,28 +151,25 @@ uint8_t getWriteStatus(uint8_t devAddress, uint8_t* buffer) {
 uint8_t setWriteStatus(uint8_t devAddress, uint8_t data, uint8_t status) {
     // Validate the data
     if(data != 0x80 && data != 0x40 && data != 0x20 && data != 0x00) {
-        return 0; // Invalid data
+        return PMBUS_INVALID_DATA; // Invalid data
     }
 
-    if(!PMBUS_WriteByte(devAddress, WRITE_PROTECT, data)) {
-        return 0;
-    }
-    return 1; // Success
+    return PMBUS_WriteByte(devAddress, WRITE_PROTECT, data);
 }
 
 // Save current configuration to Non-Volatile Memory
 uint8_t saveToNVM(uint8_t devAddress) {
-    if(!(PMBUS_SendByte(devAddress, STORE_DEFAULT_ALL))) {
+    if((PMBUS_SendByte(devAddress, STORE_DEFAULT_ALL)) != PMBUS_OK) {
         return PMBUS_SendByte(devAddress, 0x15); // Try STORE_USER_ALL if STORE_DEFAULT_ALL fails
     }
-    return 1;
+    return PMBUS_OK;
 }
 
 // Restore device configuration
 uint8_t restoreDevice(uint8_t devAddress, uint8_t status) {
     uint8_t buf[10];
     uint8_t PSW_Status;
-    if(!getOpStatus(devAddress, buf)) return 0;
+    if(getOpStatus(devAddress, buf) != PMBUS_OK) return -1;
 
     PSW_Status = buf[0];
 
@@ -181,116 +178,119 @@ uint8_t restoreDevice(uint8_t devAddress, uint8_t status) {
             return PMBUS_SendByte(devAddress, 0x16); // Try RESTORE_USER_ALL if RESTORE_DEFAULT_ALL fails
         }
     }
-    return 1;
+    return PMBUS_OK;
 }
 
 // Read the device ID
 uint8_t readDeviceID(uint8_t devAddress, uint8_t* buffer) {
     uint8_t count;
+    uint8_t result;
 
+    result = PMBUS_BlockRead(devAddress, IC_DEVICE_ID, buffer, &count);
     // Perform a Block Read transaction
-    if (!PMBUS_BlockRead(devAddress, IC_DEVICE_ID, buffer, &count)) return 0;  // Read failed
+   if (result != PMBUS_OK) return result;  // Read failed
 
     // Check if the count is valid
-    if (count == 0 || count > 32) return 0;  // Invalid count
-    return 1;  // Read successful
+    if (count == 0 || count > 32) return PMBUS_INVALID_DATA;  // Invalid count
+    return PMBUS_OK;  // Read successful
 }
 
 // Get the PMBus revision supported by the device
 uint8_t PMBUSRev(uint8_t devAddress, uint8_t* buffer) {
+
+    uint8_t result;
+
+    result = PMBUS_ReadByte(devAddress, PMBUS_REVISION, buffer);
     // Perform a Read Byte transaction
-    if (!PMBUS_ReadByte(devAddress, PMBUS_REVISION, buffer)) return 0;  // Read failed
+    if (result != PMBUS_OK) return result;  // Read failed
 
     // Extract Part 1 (bits 7:4) and Part 2 (bits 3:0)
     buffer[1] = (*buffer >> 4) & 0x0F;  // Part 1
     buffer[2] = *buffer & 0x0F;         // Part 2
 
-    return 1;  // Read successful
+    return PMBUS_OK;  // Read successful
 }
 
 // Get the device capabilities
 uint8_t getCap(uint8_t devAddress, uint8_t* buffer) {
     // Perform a Read Byte transaction
-    if (!PMBUS_ReadByte(devAddress, CAPABILITY, buffer)) return 0;  // Read failed
-    return 1;
+    return PMBUS_ReadByte(devAddress, CAPABILITY, buffer);
 }
 
 // Set the manufacturer ID
 uint8_t setMfrId(uint8_t devAddress, uint8_t *data, uint8_t len) {
-    if(!PMBUS_BlockWrite(devAddress, MFR_ID, data, len)) return 0;
-    return 1;
+    return PMBUS_BlockWrite(devAddress, MFR_ID, data, len);
 }
 
 // Get the manufacturer ID
 uint8_t getMfrId(uint8_t devAddress, uint8_t* buffer) {
     uint8_t len;
-    if(!PMBUS_BlockRead(devAddress, MFR_ID, buffer, &len)) return 0;
+    uint8_t result;
+
+    result = PMBUS_BlockRead(devAddress, MFR_ID, buffer, &len);
+    if(result) return result;
     // Check if the count is valid
-    if (len == 0 || len > 32) return 0;  // Invalid length
-    return 1;
+    if (len == 0 || len > 32) return PMBUS_INVALID_DATA;  // Invalid length
+    return PMBUS_OK;
 }
 
 // Set the board revision
 uint8_t setBoardRev(uint8_t devAddress, uint8_t *data, uint8_t len) {
-    if(!PMBUS_BlockWrite(devAddress, MFR_REVISION, data, len)) return 0;
-    return 1;
+    return PMBUS_BlockWrite(devAddress, MFR_REVISION, data, len);
 }
 
 // Get the board revision
 uint8_t getBoardRev(uint8_t devAddress, uint8_t* buffer) {
     uint8_t len;
-    if(!PMBUS_BlockRead(devAddress, MFR_REVISION, buffer, &len)) return 0;
+    uint8_t result;
+
+    result = PMBUS_BlockRead(devAddress, MFR_REVISION, buffer, &len);
+
+    if(result != PMBUS_OK) return result;
+
     // Check if the length is valid
-    if (len == 0 || len > 32) return 0;  // Invalid length
-    return 1;
+    if (len == 0 || len > 32) return PMBUS_INVALID_DATA;// Invalid length
+    return PMBUS_OK;
 }
 
 // Get the current page
 uint8_t getPage(uint8_t devAddress, uint8_t* buffer) {
-    if(!PMBUS_ReadByte(devAddress, PAGE, buffer)) return 0;
-    return 1;
+    return PMBUS_ReadByte(devAddress, PAGE, buffer);
 }
 
 // Set the current page
 uint8_t setPage(uint8_t devAddress, uint8_t data) {
-    if(!PMBUS_WriteByte(devAddress, PAGE, data)) return 0;
-    return 1;
+    return PMBUS_WriteByte(devAddress, PAGE, data);
 }
 
 // Get the current phase
 uint8_t getPhase(uint8_t devAddress, uint8_t* buffer) {
-    if(!PMBUS_ReadByte(devAddress, PHASE, buffer)) return 0;
-    return 1;
+    return PMBUS_ReadByte(devAddress, PHASE, buffer);
 }
 
 // Set the current phase
 uint8_t setPhase(uint8_t devAddress, uint8_t data) {
-    if(!PMBUS_WriteByte(devAddress, PHASE, data)) return 0;
-    return 1;
+    return PMBUS_WriteByte(devAddress, PHASE, data);
 }
 
 // Get the operation status
 uint8_t getOpStatus(uint8_t devAddress, uint8_t* buffer) {
-    if(!PMBUS_ReadByte(devAddress, OPERATION, buffer)) return 0;
-    return 1;
+    return PMBUS_ReadByte(devAddress, OPERATION, buffer);
 }
 
 // Set the operation status
 uint8_t setOpStatus(uint8_t devAddress, uint8_t data) {
-    if(!PMBUS_WriteByte(devAddress, OPERATION, data)) return 0;
-    return 1;
+    return PMBUS_WriteByte(devAddress, OPERATION, data);
 }
 
 // Get the on/off configuration
 uint8_t getOnOffConfig(uint8_t devAddress, uint8_t* buffer) {
-    if(!PMBUS_ReadByte(devAddress, ON_OFF_CONFIG, buffer)) return 0;
-    return 1;
+    return PMBUS_ReadByte(devAddress, ON_OFF_CONFIG, buffer);
 }
 
 // Set the on/off configuration
 uint8_t setOnOffConfig(uint8_t devAddress, uint8_t data) {
-    if(!PMBUS_WriteByte(devAddress, ON_OFF_CONFIG, data)) return 0;
-    return 1;
+    return PMBUS_WriteByte(devAddress, ON_OFF_CONFIG, data);
 }
 
 // Get the VOUT mode

@@ -5,22 +5,7 @@
 
 int pdevInit(pmbus_device_t *pdev)
 {
-	if(pdev->address != 0){
-		//Get PMBUS revision
-		if(PMBUSRev(pdev->address, pdev->rxBuf)){
-			for(int i = 0; i < 2; i++){
-				pdev->pmbus_rev[i] = pdev->rxBuf[i];
-			}
-		}
-		//Get Number of Page
-		if(getPage){
-			return 1;
-		}
-		//Get Number of Phase
-
-		return 0;
-	}
-	return 1;
+	return 0;
 }
 
 int deviceCapabilities(pmbus_device_t *pdev) {
@@ -47,29 +32,31 @@ int deviceCapabilities(pmbus_device_t *pdev) {
             pdev->deviceCap.res1 = bit[1];
             pdev->deviceCap.res0 = bit[0];
 
-            return 0; // successful
+            return 1; // successful
         }
     }
-    return 1; // failed
+    return 0; // failed
 }
 
 
 int scanPMBUSwire(pmbus_device_t *pdev)
 {
+    pmbus_error_t result;
     for (uint8_t addr = 0xB0; addr <= 0xEE; addr++) {
 	    // Scan addresses from 0xC0 to 0xFE
-        if (readDeviceID(addr, pdev->rxBuf)) {
+	  result = readDeviceID(addr, pdev->rxBuf);
+        if (result == PMBUS_OK) {
             pdev->address = addr;
             if (pdev->rxBuf[0] != 0) {
                 pdev->deviceID = pdev->rxBuf[0];
-                return 0;
+                return PMBUS_OK;
             }else{
-                return -1;  // Memory allocation failed
+                return result;  // Memory allocation failed
             }
         }
     }
 
-    return 1;  // No device found or readDeviceID failed for all addresses
+    return 0;  // No device found or readDeviceID failed for all addresses
 }
 
 void resetPMBUSdevice(pmbus_device_t *pdev)

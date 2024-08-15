@@ -4,11 +4,11 @@
 
 1. [Introduction](#introduction)
 2. [Command Structure](#command-structure)
-4. [System Commands](#system-commands)
-5. [Configuration Commands](#configuration-commands)
-6. [Error Handling](#error-handling)
-7. [PMBus Commands Documentation](#pmbus-commands-documentation)
-8. [System Diagram](#system-diagram)
+3. [System Commands](#system-commands)
+4. [Configuration Commands](#configuration-commands)
+5. [Error Handling](#error-handling)
+6. [PMBus Commands Documentation](#pmbus-commands-documentation)
+7. [System Diagram](#system-diagram)
 
 ## Introduction
 
@@ -18,9 +18,7 @@ This document provides detailed information on the PMBus Command Interface, incl
 
 All commands follow this general structure:
 
-```
-[TYPE][CMD][DATA]\n
-```
+`[TYPE]` `[CMD]` `[DATA]` `\n`
 
 - `[TYPE]`: Single digit representing the command type
   - `0`: PMBus command
@@ -29,6 +27,30 @@ All commands follow this general structure:
 - `[CMD]`: Three-digit command code
 - `[DATA]`: Optional data (format depends on the command)
 - `\n`: Newline character (required to end the command)
+
+## System Commands
+
+System commands control overall system behavior.
+
+Format: `[1][CMD][DATA][\n]`
+
+### Available System Commands
+
+| Command               | Code | Description                     |
+| --------------------- | ---- | ------------------------------- |
+| SYS_GET_OS_VERSION    | 000  | Get the OS version              |
+| SYS_SCAN_ACTIVE_ADDR  | 001  | Scan for active PMBus addresses |
+| SYS_UPDATE_FIRMWARE   | 002  | Initiate firmware update        |
+| SYS_RESET             | 003  | Perform system reset            |
+| SYS_GET_UPTIME        | 004  | Get system uptime               |
+| SYS_GET_MEMORY_STATS  | 005  | Get memory usage statistics     |
+| SYS_GET_CPU_USAGE     | 006  | Get CPU usage information       |
+| SYS_GET_HARDWARE_INFO | 007  | Get hardware information        |
+
+Example usage:
+
+- Get OS Version: `1000\n`
+- Scan for active PMBus addresses: `1001\n`
 
 ## Configuration Commands
 
@@ -65,63 +87,6 @@ Where:
 Example: 20021\n
 
 This sets the log verbosity to NORMAL.
-
-## PMBus Commands
-
-PMBus commands interact directly with the PMBus device. They include an additional bit for read/write operations.
-
-Format: `[0][CMD][R/W][DATA][\n]`
-
-- `[R/W]`: `0` for read, `1` for write
-- `[DATA]`: Hexadecimal data for write operations (omitted for read operations)
-
-### Available PMBus Commands
-
-| Command             | Code | Description                        |
-| ------------------- | ---- | ---------------------------------- |
-| PAGE                | 000  | Set/Get the current page           |
-| OPERATION           | 001  | Set/Get the operation state        |
-| ON_OFF_CONFIG       | 002  | Set/Get the on/off configuration   |
-| CLEAR_FAULT         | 003  | Clear all faults                   |
-| PHASE               | 004  | Set/Get the current phase          |
-| WRITE_PROTECT       | 010  | Set/Get write protection status    |
-| STORE_DEFAULT_ALL   | 011  | Store current settings as defaults |
-| RESTORE_DEFAULT_ALL | 012  | Restore default settings           |
-| CAPABILITY          | 025  | Get device capabilities            |
-| VOUT_MODE           | 031  | Get the VOUT mode                  |
-| VOUT_COMMAND        | 033  | Set/Get the output voltage         |
-
-(Note: This list is not exhaustive. Refer to the PMBus specification for a complete list of commands.)
-
-Example usage:
-
-- Read VOUT_COMMAND: `00330\n`
-- Write VOUT_COMMAND (set to 1.0V): `003311000\n`
-
-
-## System Commands
-
-System commands control overall system behavior.
-
-Format: `[1][CMD][DATA][\n]`
-
-### Available System Commands
-
-| Command               | Code | Description                     |
-| --------------------- | ---- | ------------------------------- |
-| SYS_GET_OS_VERSION    | 000  | Get the OS version              |
-| SYS_SCAN_ACTIVE_ADDR  | 001  | Scan for active PMBus addresses |
-| SYS_UPDATE_FIRMWARE   | 002  | Initiate firmware update        |
-| SYS_RESET             | 003  | Perform system reset            |
-| SYS_GET_UPTIME        | 004  | Get system uptime               |
-| SYS_GET_MEMORY_STATS  | 005  | Get memory usage statistics     |
-| SYS_GET_CPU_USAGE     | 006  | Get CPU usage information       |
-| SYS_GET_HARDWARE_INFO | 007  | Get hardware information        |
-
-Example usage:
-
-- Get OS Version: `1000\n`
-- Scan for active PMBus addresses: `1001\n`
 
 ## Configuration Commands
 
@@ -211,9 +176,7 @@ This document provides a comprehensive list of PMBus commands implemented in thi
 
 PMBus commands are sent in the following format:
 
-```
-[0][CMD][R/W][DATA][\n]
-```
+Format: `[0][CMD][R/W][DATA][\n]`
 
 - `[0]`: Indicates a PMBus command
 - `[CMD]`: Three-digit decimal command code
@@ -344,7 +307,6 @@ Example:
 | USER_DATA_00 to USER_DATA_12 | 176-188 | Read/Write user data 00 to 12 |
 
 Note: This list includes all the PMBus commands implemented in this system. Some commands may have specific data formats or restrictions. Always refer to the PMBus specification and your device's datasheet for detailed information on how to use each command.
-
 
 ## System Diagram
 

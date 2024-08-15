@@ -177,8 +177,8 @@ uint8_t CRC8(const uint8_t* data, uint32_t length)
 
 uint8_t PMBUS_SendByte(uint8_t devAddress, uint8_t data) {
     uint32_t timeout;
-    uint8_t buffer[3];
-    volatile uint8_t pec;
+    uint8_t buffer[2];
+    uint8_t pec;
 
     // Prepare buffer for PEC calculation
     buffer[0] = devAddress << 1;  // Address with write bit
@@ -187,41 +187,36 @@ uint8_t PMBUS_SendByte(uint8_t devAddress, uint8_t data) {
     // Calculate PEC
     pec = CRC8(buffer, 2);
 
-    // Ensure STOPF is cleared by writing to the ICR register
+    // Ensure STOPF is cleared
     I2C1->ICR |= I2C_ICR_STOPCF;
 
     // Ensure the I2C bus is not busy
+    timeout = 10000;
     while (I2C1->ISR & I2C_ISR_BUSY) {
-        I2C1->CR2 |= I2C_CR2_STOP;
-    }
-    if (I2C1->ISR & I2C_ISR_STOPF) {
-        I2C1->ICR |= I2C_ICR_STOPCF;
+        if (--timeout == 0) return PMBUS_TIME_OUT;
     }
 
-    // Set slave address with Write bit and number of bytes to send
-    I2C1->CR2 = (devAddress << 1) | (2 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START;
+    // Set slave address, number of bytes, and generate START
+    I2C1->CR2 = (devAddress << 1) | (2 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_AUTOEND;
 
     // Write data byte
     I2C1->TXDR = data;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;  // Wait for TXE
-    if (!checkForNack()) return 0;  // Check for NACK
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
     // Write PEC byte
     I2C1->TXDR = pec;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;  // Wait for TXE
-    if (!checkForNack()) return 0;  // Check for NACK
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
-    // Generate stop condition
-    if (!(I2C1->ISR & I2C_ISR_STOPF)) {
-        I2C1->CR2 |= I2C_CR2_STOP;
-        if (I2C1->ISR & I2C_ISR_STOPF) {
-            I2C1->ICR |= I2C_ICR_STOPCF;
-        }
-    }
+    // Wait for the stop condition
+    timeout = 10000;
+    while (!(I2C1->ISR & I2C_ISR_STOPF)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    I2C1->ICR |= I2C_ICR_STOPCF;
 
-    return 1;  // Success
+    return PMBUS_OK;
 }
 
 /**
@@ -240,7 +235,7 @@ uint8_t PMBUS_SendByte(uint8_t devAddress, uint8_t data) {
 uint8_t PMBUS_WriteByte(uint8_t devAddress, uint8_t command, uint8_t data) {
     uint32_t timeout;
     uint8_t buffer[3];
-    volatile uint8_t pec;
+    uint8_t pec;
 
     // Prepare buffer for PEC calculation
     buffer[0] = devAddress << 1;  // Write operation (address + write bit)
@@ -250,46 +245,42 @@ uint8_t PMBUS_WriteByte(uint8_t devAddress, uint8_t command, uint8_t data) {
     // Calculate PEC
     pec = CRC8(buffer, 3);
 
+    // Ensure STOPF is cleared
+    I2C1->ICR |= I2C_ICR_STOPCF;
+
     // Ensure the I2C bus is not busy
+    timeout = 10000;
     while (I2C1->ISR & I2C_ISR_BUSY) {
-        I2C1->CR2 |= I2C_CR2_STOP;
-    }
-    if (I2C1->ISR & I2C_ISR_STOPF) {
-        I2C1->ICR |= I2C_ICR_STOPCF;
+        if (--timeout == 0) return PMBUS_TIME_OUT;
     }
 
-    // Set slave address (shifted left by 1) with Write bit (0) and number of bytes to send
-    I2C1->CR2 = (devAddress << 1) | (4 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_RELOAD;
+    // Set slave address, number of bytes, and generate START
+    I2C1->CR2 = (devAddress << 1) | (3 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_AUTOEND;
 
     // Write command byte
     I2C1->TXDR = command;
-    if (!checkForNack()) return 0;  // Check for NACK
-
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;  // Wait for TXE
-    if (!checkForNack()) return 0;  // Check for NACK
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
     // Write data byte
     I2C1->TXDR = data;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;  // Wait for TXE
-    if (!checkForNack()) return 0;  // Check for NACK
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
     // Write PEC byte
     I2C1->TXDR = pec;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;  // Wait for TXE
-    if (!checkForNack()) return 0;  // Check for NACK
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
-    // Generate stop condition
-    if (!(I2C1->ISR & I2C_ISR_STOPF)) {
-        I2C1->CR2 |= I2C_CR2_STOP;
-        if (I2C1->ISR & I2C_ISR_STOPF) {
-            I2C1->ICR |= I2C_ICR_STOPCF;
-        }
-    }
+    // Wait for the stop condition
+    timeout = 10000;
+    while (!(I2C1->ISR & I2C_ISR_STOPF)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    I2C1->ICR |= I2C_ICR_STOPCF;
 
-    return 1;  // Success
+    return PMBUS_OK;
 }
 
 /**
@@ -308,55 +299,53 @@ uint8_t PMBUS_WriteByte(uint8_t devAddress, uint8_t command, uint8_t data) {
 uint8_t PMBUS_ReadByte(uint8_t devAddress, uint8_t command, uint8_t *data) {
     uint32_t timeout;
     uint8_t buffer[4];
-    uint8_t pec_received;
-    uint8_t pec_calculated;
+    uint8_t pec_received, pec_calculated;
 
-    // Ensure STOPF is cleared by writing to the ICR register
+    // Ensure STOPF is cleared
     I2C1->ICR |= I2C_ICR_STOPCF;
 
     // Write command
     I2C1->CR2 = (devAddress << 1) | (1 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START;
     I2C1->TXDR = command;
 
-    if (!checkForNack()) return 0;
+    if (!checkForNack()) return PMBUS_NACK;
 
-    // Wait until transmission is complete
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TC)) if (--timeout == 0) break;
-
-    if (!checkForNack()) return 0;
+    while (!(I2C1->ISR & I2C_ISR_TC)) if (--timeout == 0) return PMBUS_TIME_OUT;
 
     // Prepare buffer for PEC calculation
-    buffer[0] = (devAddress << 1);  // Read operation (address + read bit)
+    buffer[0] = devAddress << 1;  // Write operation
     buffer[1] = command;
+    buffer[2] = (devAddress << 1) | 1;  // Read operation
 
     // Read data and PEC
     I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (2 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_AUTOEND;
+
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) break;
+    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return PMBUS_TIME_OUT;
     *data = I2C1->RXDR;
-    buffer[2] = (devAddress << 1) | 1;
     buffer[3] = *data;
 
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) break;
+    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return PMBUS_TIME_OUT;
     pec_received = I2C1->RXDR;
 
-    if (!(I2C1->ISR & I2C_ISR_STOPF)) {
-        I2C1->CR2 |= I2C_CR2_STOP;
-        if (I2C1->ISR & I2C_ISR_STOPF) I2C1->ICR |= I2C_ICR_STOPCF;
-    }
+    // Wait for the stop condition
+    timeout = 10000;
+    while (!(I2C1->ISR & I2C_ISR_STOPF)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    I2C1->ICR |= I2C_ICR_STOPCF;
 
     // Calculate PEC
     pec_calculated = CRC8(buffer, 4);
 
     // Validate PEC
     if (pec_received != pec_calculated) {
-        return 0;  // PEC mismatch
+        return PMBUS_PEC_MISMATCH;
     }
 
-    return 1;  // Success
+    return PMBUS_OK;
 }
+
 
 /**
  * @brief Writes a 16-bit word (2 bytes) to a PMBus device.
@@ -369,64 +358,64 @@ uint8_t PMBUS_ReadByte(uint8_t devAddress, uint8_t command, uint8_t *data) {
  * @param command The command byte to be sent to the PMBus device.
  * @param data The 16-bit word (2 bytes) to be written to the PMBus device.
  *
- * @return uint8_t Returns 1 on success (data written and PEC matched), otherwise 0 (error during write or PEC mismatch).
+ * @return uint8_t Returns PMBUS_OK on success (data written and PEC matched), otherwise (error during write or PEC mismatch).
  */
 uint8_t PMBUS_WriteWord(uint8_t devAddress, uint8_t command, uint16_t data) {
     uint32_t timeout;
     uint8_t buffer[4];
-    volatile uint8_t pec;
+    uint8_t pec;
 
     // Prepare buffer for PEC calculation
-    buffer[0] = devAddress << 1;        // Write operation (address + write bit)
+    buffer[0] = devAddress << 1;  // Write operation (address + write bit)
     buffer[1] = command;
-    buffer[2] = data & 0xFF;            // Low byte
-    buffer[3] = (data >> 8) & 0xFF;     // High byte
+    buffer[2] = data & 0xFF;  // Low byte
+    buffer[3] = (data >> 8) & 0xFF;  // High byte
 
     // Calculate PEC
     pec = CRC8(buffer, 4);
 
-    // Ensure STOPF is cleared by writing to the ICR register
+    // Ensure STOPF is cleared
     I2C1->ICR |= I2C_ICR_STOPCF;
 
-    // Start I2C transmission
+    // Ensure the I2C bus is not busy
+    timeout = 10000;
+    while (I2C1->ISR & I2C_ISR_BUSY) {
+        if (--timeout == 0) return PMBUS_TIME_OUT;
+    }
+
+    // Set slave address, number of bytes, and generate START
     I2C1->CR2 = (devAddress << 1) | (4 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_AUTOEND;
 
     // Write command byte
     I2C1->TXDR = command;
-    if (!checkForNack()) return 0;
-
-    // Wait until transmission is complete
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
-    if (!checkForNack()) return 0;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
     // Write data low byte
     I2C1->TXDR = data & 0xFF;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
-    if (!checkForNack()) return 0;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
     // Write data high byte
     I2C1->TXDR = (data >> 8) & 0xFF;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
-    if (!checkForNack()) return 0;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
     // Write PEC byte
     I2C1->TXDR = pec;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
-    if (!checkForNack()) return 0;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
-    // Generate stop condition
-    if (!(I2C1->ISR & I2C_ISR_STOPF)) {
-        I2C1->CR2 |= I2C_CR2_STOP;
-        if (I2C1->ISR & I2C_ISR_STOPF) {
-            I2C1->ICR |= I2C_ICR_STOPCF;
-        }
-    }
+    // Wait for the stop condition
+    timeout = 10000;
+    while (!(I2C1->ISR & I2C_ISR_STOPF)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    I2C1->ICR |= I2C_ICR_STOPCF;
 
-    return 1;  // Success
+    return PMBUS_OK;
 }
 
 
@@ -446,61 +435,59 @@ uint8_t PMBUS_WriteWord(uint8_t devAddress, uint8_t command, uint16_t data) {
  */
 uint8_t PMBUS_ReadWord(uint8_t devAddress, uint8_t command, uint16_t *data) {
     uint32_t timeout;
-    uint8_t buffer[4];
+    uint8_t buffer[5];
+    uint8_t pec_received, pec_calculated;
     uint8_t low_byte, high_byte;
-    volatile uint8_t pec_received, pec_calculated;
 
-    // Ensure STOPF is cleared by writing to the ICR register
+    // Ensure STOPF is cleared
     I2C1->ICR |= I2C_ICR_STOPCF;
 
     // Write command
     I2C1->CR2 = (devAddress << 1) | (1 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START;
     I2C1->TXDR = command;
 
-    if (!checkForNack()) return 0;
+    if (!checkForNack()) return PMBUS_NACK;
 
-    // Wait until transmission is complete
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TC)) if (--timeout == 0) break;
-
-    if (!checkForNack()) return 0;
+    while (!(I2C1->ISR & I2C_ISR_TC)) if (--timeout == 0) return PMBUS_TIME_OUT;
 
     // Prepare buffer for PEC calculation
-    buffer[0] = (devAddress << 1);  // Read operation (address + read bit)
+    buffer[0] = devAddress << 1;  // Write operation
     buffer[1] = command;
     buffer[2] = (devAddress << 1) | 1;  // Read operation
 
     // Read data and PEC
     I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (3 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_AUTOEND;
+
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) break;
+    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return PMBUS_TIME_OUT;
     low_byte = I2C1->RXDR;
-    buffer[2] = low_byte;
+    buffer[3] = low_byte;
 
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) break;
+    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return PMBUS_TIME_OUT;
     high_byte = I2C1->RXDR;
-    buffer[3] = high_byte;
+    buffer[4] = high_byte;
 
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) break;
+    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return PMBUS_TIME_OUT;
     pec_received = I2C1->RXDR;
 
-    if (!(I2C1->ISR & I2C_ISR_STOPF)) {
-        I2C1->CR2 |= I2C_CR2_STOP;
-        if (I2C1->ISR & I2C_ISR_STOPF) I2C1->ICR |= I2C_ICR_STOPCF;
-    }
+    // Wait for the stop condition
+    timeout = 10000;
+    while (!(I2C1->ISR & I2C_ISR_STOPF)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    I2C1->ICR |= I2C_ICR_STOPCF;
 
     // Calculate PEC
     pec_calculated = CRC8(buffer, 5);
 
     // Validate PEC
     if (pec_received != pec_calculated) {
-        pecbyte = 0;  // PEC mismatch
+        return PMBUS_PEC_MISMATCH;
     }
 
     *data = (uint16_t)low_byte | ((uint16_t)high_byte << 8);
-    return 1;  // Success
+    return PMBUS_OK;
 }
 
 /**
@@ -518,11 +505,11 @@ uint8_t PMBUS_ReadWord(uint8_t devAddress, uint8_t command, uint16_t *data) {
  * @return uint8_t Returns 1 on success (data written and PEC matched), otherwise 0 (error during write or PEC mismatch).
  */
 uint8_t PMBUS_BlockWrite(uint8_t devAddress, uint8_t command, uint8_t *data, uint8_t length) {
+    if (length > 255) return PMBUS_INVALID_DATA;  // PMBus block write limited to 255 bytes
+
     uint32_t timeout;
     uint8_t buffer[258];  // Maximum length including address, command, byte count, data, and PEC
-    volatile uint8_t pec_calculated;
-
-    if (length > 255) return 0;  // PMBus block write limited to 255 bytes
+    uint8_t pec;
 
     // Prepare buffer for PEC calculation
     buffer[0] = devAddress << 1;  // Write operation (address + write bit)
@@ -533,58 +520,52 @@ uint8_t PMBUS_BlockWrite(uint8_t devAddress, uint8_t command, uint8_t *data, uin
     }
 
     // Calculate PEC
-    pec_calculated = CRC8(buffer, length + 3);
+    pec = CRC8(buffer, length + 3);
 
-    // Ensure STOPF is cleared by writing to the ICR register
+    // Ensure STOPF is cleared
     I2C1->ICR |= I2C_ICR_STOPCF;
 
-    // Start I2C transmission and send command
-    I2C1->CR2 = (devAddress << 1) | ((length + 4) << I2C_CR2_NBYTES_Pos) | I2C_CR2_START |I2C_CR2_RELOAD;
-    I2C1->TXDR = command;
-
-    if (!checkForNack()) return 0;  // Check for NACK
-
-    // Wait until transmission is complete
+    // Ensure the I2C bus is not busy
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) break;
+    while (I2C1->ISR & I2C_ISR_BUSY) {
+        if (--timeout == 0) return PMBUS_TIME_OUT;
+    }
 
-    if (!checkForNack()) return 0;  // Check for NACK
+    // Set slave address, number of bytes, and generate START
+    I2C1->CR2 = (devAddress << 1) | ((length + 3) << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_AUTOEND;
 
-    // Send byte count
+    // Write command byte
+    I2C1->TXDR = command;
+    timeout = 10000;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
+
+    // Write byte count
     I2C1->TXDR = length;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) break;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
-    if (!checkForNack()) return 0;  // Check for NACK
-
-    // Send data bytes
+    // Write data bytes
     for (uint8_t i = 0; i < length; i++) {
         I2C1->TXDR = data[i];
         timeout = 10000;
-        while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) break;
-
-        if (!checkForNack()) return 0;  // Check for NACK
+        while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+        if (!checkForNack()) return PMBUS_NACK;
     }
 
-    // Send PEC
-    I2C1->TXDR = pec_calculated;
+    // Write PEC byte
+    I2C1->TXDR = pec;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) break;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
-    if (!checkForNack()) return 0;  // Check for NACK
+    // Wait for the stop condition
+    timeout = 10000;
+    while (!(I2C1->ISR & I2C_ISR_STOPF)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    I2C1->ICR |= I2C_ICR_STOPCF;
 
-    // Ensure STOPF is handled correctly
-    if (!(I2C1->ISR & I2C_ISR_STOPF)) {
-        I2C1->CR2 |= I2C_CR2_STOP;
-        if (I2C1->ISR & I2C_ISR_STOPF) I2C1->ICR |= I2C_ICR_STOPCF;
-    }
-
-    // Flush the TXDR register if necessary
-    if (I2C1->ISR & I2C_ISR_TXE) {
-        I2C1->ISR |= I2C_ISR_TXE;
-    }
-
-    return 1;  // Success
+    return PMBUS_OK;
 }
 
 
@@ -603,73 +584,71 @@ uint8_t PMBUS_BlockWrite(uint8_t devAddress, uint8_t command, uint8_t *data, uin
  *
  * @return uint8_t Returns 1 on success (data read and PEC matched), otherwise 0 (error during read or PEC mismatch).
  */
-uint8_t PMBUS_BlockRead(uint8_t devAddress, uint8_t command, uint8_t *data, uint8_t *length)
-{
-    uint32_t timeout = 10000;
-    uint8_t byte_count;
-    volatile uint8_t pec_received, pec_calculated;
+//FIXME -- Block read doesnt seem to be working correctly
+uint8_t PMBUS_BlockRead(uint8_t devAddress, uint8_t command, uint8_t *data, uint8_t *length) {
+    uint32_t timeout;
     uint8_t buffer[258];  // Maximum length including address, command, byte count, data, and PEC
+    uint8_t pec_received, pec_calculated;
+    uint8_t byte_count;
 
-    // Ensure STOPF is cleared by writing to the ICR register
+    // Ensure STOPF is cleared
     I2C1->ICR |= I2C_ICR_STOPCF;
 
     // Write command
     I2C1->CR2 = (devAddress << 1) | (1 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START;
     I2C1->TXDR = command;
 
-    if(!checkForNack())return 0;
+    if (!checkForNack()) return PMBUS_NACK;
 
-    // Wait until transmission is complete
-    while (!(I2C1->ISR & I2C_ISR_TC))if(--timeout==0)break;
-
-    if(!checkForNack())return 0;
-    // Read data byte count
     timeout = 10000;
-    I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (2 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START ;
-    while (!(I2C1->ISR & I2C_ISR_RXNE))if(--timeout==0)break;
-    byte_count = I2C1->RXDR;
+    while (!(I2C1->ISR & I2C_ISR_TC)) if (--timeout == 0) return PMBUS_TIME_OUT;
 
     // Prepare buffer for PEC calculation
-    buffer[0] = (devAddress << 1);  // Read operation (address + read bit)
+    buffer[0] = devAddress << 1;  // Write operation
     buffer[1] = command;
-    buffer[2] = (devAddress << 1) | 1;
-    buffer[3] = byte_count;  // Byte count
-    // Read data
-    I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (byte_count << I2C_CR2_NBYTES_Pos) | I2C_CR2_RELOAD;
+    buffer[2] = (devAddress << 1) | 1;  // Read operation
+
+    // Read byte count
+    I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (1 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START;
+    timeout = 10000;
+    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    byte_count = I2C1->RXDR;
+    buffer[3] = byte_count;
+
+    if (byte_count > *length) {
+        return PMBUS_WRITE_OVER_FLOW;
+    }
+
+    // Read data and PEC
+    I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | ((byte_count + 1) << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_AUTOEND;
+
     for (uint8_t i = 0; i < byte_count; i++) {
-	    timeout = 10000;
-	    while (!(I2C1->ISR & I2C_ISR_RXNE))if(--timeout==0)break;
-	    data[i] = I2C1->RXDR;
-	    buffer[4 + i] = data[i];  // Store data for PEC calculation
+        timeout = 10000;
+        while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+        data[i] = I2C1->RXDR;
+        buffer[4 + i] = data[i];
     }
 
     // Read PEC
-    I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (1 << I2C_CR2_NBYTES_Pos);
-
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_RXNE))break;
+    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return PMBUS_TIME_OUT;
     pec_received = I2C1->RXDR;
 
-    if(!(I2C1->ISR & I2C_ISR_STOPF))
-    {
-	    I2C1->CR2 |= I2C_CR2_STOP;
-	    if(I2C1->ISR & I2C_ISR_STOPF) I2C1->ICR |= I2C_ICR_STOPCF;
-    }
+    // Wait for the stop condition
+    timeout = 10000;
+    while (!(I2C1->ISR & I2C_ISR_STOPF)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    I2C1->ICR |= I2C_ICR_STOPCF;
 
-    // Calculate PEC over received data
-    pec_calculated = CRC8(buffer, byte_count + 3);
+    // Calculate PEC
+    pec_calculated = CRC8(buffer, byte_count + 4);
 
     // Validate PEC
     if (pec_received != pec_calculated) {
-	    pecbyte = 0;  // PEC mismatch
+        return PMBUS_PEC_MISMATCH;
     }
 
-    //Flush the TXDR register
-    if(I2C1->ISR & I2C_ISR_TXE){
-	    I2C1->ISR |= I2C_ISR_TXE;
-    }
     *length = byte_count;
-    return 1;  // Success
+    return PMBUS_OK;
 }
 
 /**
@@ -693,94 +672,111 @@ uint8_t PMBUS_BlockRead(uint8_t devAddress, uint8_t command, uint8_t *data, uint
 uint8_t PMBUS_BlockWriteBlockRead(uint8_t devAddress, uint8_t command,
                                   uint8_t *write_data, uint8_t write_count,
                                   uint8_t *read_data, uint8_t *read_count) {
-    if (write_count > 255 || *read_count > 255) return 0;  // PMBus block limited to 255 bytes
+    if (write_count > 255 || *read_count > 255) return PMBUS_INVALID_DATA;
 
-    uint8_t buffer[256];
-    volatile uint8_t pec;
     uint32_t timeout;
+    uint8_t buffer[258];  // Maximum length including address, command, byte count, data, and PEC
+    uint8_t pec;
+    uint8_t byte_count;
 
-    // Ensure the I2C bus is not busy
-    while (I2C1->ISR & I2C_ISR_BUSY);
-
-
-
+    // Write operation
     // Prepare buffer for PEC calculation
-    buffer[0] = devAddress << 1;
+    buffer[0] = devAddress << 1;  // Write operation (address + write bit)
     buffer[1] = command;
     buffer[2] = write_count;
     for (uint8_t i = 0; i < write_count; i++) {
-	buffer[3 + i] = write_data[i];
+        buffer[3 + i] = write_data[i];
     }
 
+    // Calculate PEC for write operation
     pec = CRC8(buffer, write_count + 3);
 
-    // Set slave address with Write bit and number of bytes to send
-    I2C1->CR2 = (devAddress << 1) | ((write_count + 2) << I2C_CR2_NBYTES_Pos) | I2C_CR2_START;
+    // Ensure STOPF is cleared
+    I2C1->ICR |= I2C_ICR_STOPCF;
+
+    // Ensure the I2C bus is not busy
+    timeout = 10000;
+    while (I2C1->ISR & I2C_ISR_BUSY) {
+        if (--timeout == 0) return PMBUS_TIME_OUT;
+    }
+
+    // Set slave address, number of bytes, and generate START
+    I2C1->CR2 = (devAddress << 1) | ((write_count + 3) << I2C_CR2_NBYTES_Pos) | I2C_CR2_START;
+
     // Write command byte
     I2C1->TXDR = command;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
-    if (I2C1->ISR & I2C_ISR_NACKF) return 0;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
     // Write byte count
     I2C1->TXDR = write_count;
-    pec = CRC8(&write_count, 1);
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
-    if (I2C1->ISR & I2C_ISR_NACKF) return 0;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
-    // Write data
+    // Write data bytes
     for (uint8_t i = 0; i < write_count; i++) {
-	    I2C1->TXDR = write_data[i];
-	    timeout = 10000;
-	    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
-	    if (I2C1->ISR & I2C_ISR_NACKF) return 0;
+        I2C1->TXDR = write_data[i];
+        timeout = 10000;
+        while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+        if (!checkForNack()) return PMBUS_NACK;
     }
 
-    // Send PEC byte
+    // Write PEC byte
     I2C1->TXDR = pec;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return 0;
-    if (I2C1->ISR & I2C_ISR_NACKF) return 0;
+    while (!(I2C1->ISR & I2C_ISR_TXE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    if (!checkForNack()) return PMBUS_NACK;
 
-    // Repeated start for read operation
+    // Wait for TC flag
+    timeout = 10000;
+    while (!(I2C1->ISR & I2C_ISR_TC)) if (--timeout == 0) return PMBUS_TIME_OUT;
+
+    // Read operation
+    // Prepare buffer for PEC calculation
+    buffer[0] = (devAddress << 1) | 1;  // Read operation (address + read bit)
+
+    // Read byte count
     I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (1 << I2C_CR2_NBYTES_Pos) | I2C_CR2_START;
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return 0;
-    uint8_t byte_count = I2C1->RXDR;
+    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    byte_count = I2C1->RXDR;
+    buffer[1] = byte_count;
 
-    buffer[0] = devAddress << 1;
-    buffer[1] = command;
-    buffer[2] = (devAddress << 1) | 1;
-    buffer[3] = byte_count;
+    if (byte_count > *read_count) {
+        return PMBUS_WRITE_OVER_FLOW;
+    }
 
-    // Read data
-    I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | (byte_count << I2C_CR2_NBYTES_Pos) | I2C_CR2_AUTOEND;
+    // Read data and PEC
+    I2C1->CR2 = (devAddress << 1) | I2C_CR2_RD_WRN | ((byte_count + 1) << I2C_CR2_NBYTES_Pos) | I2C_CR2_START | I2C_CR2_AUTOEND;
+
     for (uint8_t i = 0; i < byte_count; i++) {
         timeout = 10000;
-        while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return 0;
+        while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return PMBUS_TIME_OUT;
         read_data[i] = I2C1->RXDR;
-        buffer[4 + i] = read_data[i];
+        buffer[2 + i] = read_data[i];
     }
 
     // Read PEC
     timeout = 10000;
-    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return 0;
-    volatile uint8_t received_pec = I2C1->RXDR;
+    while (!(I2C1->ISR & I2C_ISR_RXNE)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    uint8_t pec_received = I2C1->RXDR;
+
+    // Wait for the stop condition
+    timeout = 10000;
+    while (!(I2C1->ISR & I2C_ISR_STOPF)) if (--timeout == 0) return PMBUS_TIME_OUT;
+    I2C1->ICR |= I2C_ICR_STOPCF;
+
 
     // Calculate PEC for read operation
-    pec = CRC8(buffer, byte_count + 4);
+    pec = CRC8(buffer, byte_count + 2);
 
-    if (received_pec != pec) return 0; // PEC mismatch
-
-    // Ensure stop condition
-    if (!(I2C1->ISR & I2C_ISR_STOPF)) {
-        I2C1->CR2 |= I2C_CR2_STOP;
-        while (!(I2C1->ISR & I2C_ISR_STOPF));
-        I2C1->ICR = I2C_ICR_STOPCF;
+    // Validate PEC
+    if (pec_received != pec) {
+        return PMBUS_PEC_MISMATCH;
     }
 
     *read_count = byte_count;
-    return 1;
+    return PMBUS_OK;
 }
-
